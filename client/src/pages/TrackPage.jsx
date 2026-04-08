@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiUrl } from '../api';
 import {
   Search,
   Loader2,
@@ -42,7 +43,7 @@ export default function TrackPage() {
     setOrder(null);
 
     try {
-      const res = await fetch(`/api/order/${encodeURIComponent(trimmed)}`);
+      const res = await fetch(apiUrl(`/api/order/${encodeURIComponent(trimmed)}`));
       if (!res.ok) {
         setError('Order not found. Check your confirmation email for the correct order ID.');
         setLoading(false);

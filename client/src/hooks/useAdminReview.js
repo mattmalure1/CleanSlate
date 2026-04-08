@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { apiUrl } from '../api';
 
 export function useAdminReview() {
   const [loading, setLoading] = useState(false);
@@ -11,7 +12,7 @@ export function useAdminReview() {
     setData(null);
     try {
       const cleanCode = code.replace(/[^a-zA-Z0-9]/g, '');
-      const res = await fetch(`/api/admin/review?code=${encodeURIComponent(cleanCode)}&hasCase=${hasCase}`);
+      const res = await fetch(apiUrl(`/api/admin/review?code=${encodeURIComponent(cleanCode)}&hasCase=${hasCase}`));
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Review failed');
       setData(json);

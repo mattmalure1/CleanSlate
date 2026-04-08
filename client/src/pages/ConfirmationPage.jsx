@@ -1,4 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { apiUrl } from '../api';
 import {
   CheckCircle,
   Download,
@@ -52,7 +53,7 @@ export default function ConfirmationPage() {
 
   async function handleDownloadLabel() {
     try {
-      const res = await fetch(`/api/label/${orderId}`, { method: 'POST' });
+      const res = await fetch(apiUrl(`/api/label/${orderId}`), { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.labelUrl) throw new Error(data.error || 'Failed to get label');
       // Open the Shippo-hosted label PDF in a new tab

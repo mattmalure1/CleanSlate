@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { apiUrl } from '../api';
 
 export function useQuote() {
   const [loading, setLoading] = useState(false);
@@ -10,7 +11,7 @@ export function useQuote() {
     setError(null);
     setResult(null);
     try {
-      const res = await fetch(`/api/quote?code=${encodeURIComponent(code)}&hasCase=${hasCase}`);
+      const res = await fetch(apiUrl(`/api/quote?code=${encodeURIComponent(code)}&hasCase=${hasCase}`));
       const data = await res.json();
       if (!res.ok) {
         // 404 = item not found — show as a rejected result, not a generic error
@@ -33,7 +34,7 @@ export function useQuote() {
   const requote = useCallback(async (code, hasCase) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/requote?code=${encodeURIComponent(code)}&hasCase=${hasCase}`);
+      const res = await fetch(apiUrl(`/api/requote?code=${encodeURIComponent(code)}&hasCase=${hasCase}`));
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to requote');
       setResult(data);

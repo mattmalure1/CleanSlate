@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { apiUrl } from '../api';
 import {
   Package, Truck, ClipboardCheck, DollarSign, Clock, Search,
   ChevronDown, ExternalLink, Mail, MapPin, RefreshCw, Database,
@@ -57,7 +58,7 @@ export default function AdminOrdersPage() {
       const params = new URLSearchParams();
       if (filter !== 'all') params.set('status', filter);
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
-      const res = await fetch(`/api/admin/orders?${params}`);
+      const res = await fetch(apiUrl(`/api/admin/orders?${params}`));
       const data = await res.json();
       setOrders(data.orders || []);
       setStats(data.stats || {});
@@ -70,7 +71,7 @@ export default function AdminOrdersPage() {
   async function updateStatus(orderId, newStatus) {
     setUpdatingId(orderId);
     try {
-      await fetch(`/api/admin/order/${orderId}`, {
+      await fetch(apiUrl(`/api/admin/order/${orderId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -84,7 +85,7 @@ export default function AdminOrdersPage() {
     if (selectedIds.size === 0) return;
     setUpdatingId('batch');
     try {
-      await fetch('/api/admin/orders/batch', {
+      await fetch(apiUrl('/api/admin/orders/batch'), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -197,7 +198,7 @@ export default function AdminOrdersPage() {
           <RefreshCw size={14} /> Refresh
         </button>
         <a
-          href="/api/admin/orders/export"
+          href={apiUrl("/api/admin/orders/export")}
           className="flex items-center gap-1.5 text-sm text-text-secondary px-3 py-2 rounded-[var(--radius-md)] border border-border hover:border-brand-400 transition-colors min-h-[44px]"
         >
           <Download size={14} /> Export CSV

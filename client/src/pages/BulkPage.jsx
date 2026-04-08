@@ -4,6 +4,7 @@ import {
   ShoppingCart, Trash2, FileText, Plus, ArrowLeft,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { apiUrl } from '../api';
 import { useCart } from '../context/CartContext';
 import BarcodeScanner from '../components/BarcodeScanner';
 
@@ -32,7 +33,7 @@ export default function BulkPage() {
   // Process a single code (for rapid scan)
   const lookupSingle = useCallback(async (code) => {
     try {
-      const res = await fetch(`/api/quote?code=${encodeURIComponent(code)}&hasCase=true&condition=good`);
+      const res = await fetch(apiUrl(`/api/quote?code=${encodeURIComponent(code)}&hasCase=true&condition=good`));
       const data = await res.json();
       if (!res.ok) {
         return { code, status: 'rejected', reason: 'not_found', message: data.error || "Not found", offerCents: 0, offerDisplay: '$0.00' };
@@ -70,7 +71,7 @@ export default function BulkPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/bulk-quote', {
+      const res = await fetch(apiUrl('/api/bulk-quote'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ codes: cleaned, hasCase: true, condition: 'good' }),

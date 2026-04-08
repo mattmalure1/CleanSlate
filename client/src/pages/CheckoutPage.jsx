@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, CreditCard, Mail, MapPin, CheckSquare, X } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { apiUrl } from '../api';
 
 export default function CheckoutPage() {
   const { items, totalDisplay, totalCents, clearCart, removeItem } = useCart();
@@ -56,7 +57,7 @@ export default function CheckoutPage() {
         },
       };
 
-      const res = await fetch('/api/order', {
+      const res = await fetch(apiUrl('/api/order'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

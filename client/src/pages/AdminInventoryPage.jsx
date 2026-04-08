@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { apiUrl } from '../api';
 import {
   Package, Search, RefreshCw, Download, CheckSquare, Square,
   ChevronDown, ExternalLink, AlertTriangle, Timer, BarChart3,
@@ -74,7 +75,7 @@ export default function AdminInventoryPage() {
       if (filter !== 'all') params.set('status', filter);
       if (categoryFilter !== 'all') params.set('category', categoryFilter);
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
-      const res = await fetch(`/api/admin/inventory?${params}`);
+      const res = await fetch(apiUrl(`/api/admin/inventory?${params}`));
       const data = await res.json();
       setItems(data.items || []);
       setStats(data.stats || {});
@@ -87,7 +88,7 @@ export default function AdminInventoryPage() {
   async function updateStatus(itemId, newStatus) {
     setUpdatingId(itemId);
     try {
-      await fetch(`/api/admin/inventory/${itemId}`, {
+      await fetch(apiUrl(`/api/admin/inventory/${itemId}`), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -101,7 +102,7 @@ export default function AdminInventoryPage() {
     if (selectedIds.size === 0) return;
     setUpdatingId('batch');
     try {
-      await fetch('/api/admin/inventory/batch', {
+      await fetch(apiUrl('/api/admin/inventory/batch'), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -244,7 +245,7 @@ export default function AdminInventoryPage() {
           <RefreshCw size={14} /> Refresh
         </button>
         <a
-          href="/api/admin/inventory/export"
+          href={apiUrl("/api/admin/inventory/export")}
           className="flex items-center gap-1.5 text-sm text-text-secondary px-3 py-2 rounded-[var(--radius-md)] border border-border hover:border-brand-400 transition-colors min-h-[44px]"
         >
           <Download size={14} /> Export CSV
