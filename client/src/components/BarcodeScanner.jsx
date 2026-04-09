@@ -155,7 +155,7 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
   const totalCents = items.filter(i => i.status === 'accepted' || i.status === 'low').reduce((s, i) => s + (i.offerCents || 0), 0);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    <div role="dialog" aria-modal="true" aria-label="Barcode scanner" className="fixed inset-0 z-50 bg-black flex flex-col">
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-3 bg-black/80 z-10">
         <button onClick={handleClose} className="text-white min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer">

@@ -345,7 +345,7 @@ export default function BulkPage() {
                         <button
                           onClick={() => handleAddToCart(r)}
                           disabled={inCart}
-                          className={`mt-1 text-xs font-semibold px-3 py-1 rounded-full transition-colors min-h-[28px] ${
+                          className={`mt-1 text-xs font-semibold px-3 py-1 rounded-full transition-colors min-h-[44px] ${
                             inCart
                               ? 'bg-accept/20 text-accept'
                               : 'bg-brand-600 text-white hover:bg-brand-700'
@@ -363,7 +363,7 @@ export default function BulkPage() {
                   </div>
                   <button
                     onClick={() => removeResult(r.code)}
-                    className="text-text-muted hover:text-reject p-1 min-w-[28px] min-h-[28px] flex items-center justify-center"
+                    className="text-text-muted hover:text-reject p-1 min-w-[44px] min-h-[44px] flex items-center justify-center"
                   >
                     <Trash2 size={14} />
                   </button>

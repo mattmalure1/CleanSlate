@@ -70,6 +70,7 @@ export default function QuoteCard({ data, onCaseToggle }) {
             src={imageUrl}
             alt=""
             className="w-24 h-24 rounded-[var(--radius-md)] object-cover bg-background flex-shrink-0"
+            alt={title || 'Product image'}
           />
         )}
 
@@ -161,6 +162,7 @@ export default function QuoteCard({ data, onCaseToggle }) {
         <div className="mt-3">
           <button
             onClick={() => setShowWhy(!showWhy)}
+            aria-expanded={showWhy}
             className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-text-secondary min-h-[44px] cursor-pointer"
           >
             <Info size={14} />

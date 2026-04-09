@@ -61,7 +61,7 @@ export default function HomePage() {
             <br />
             <span className="bg-gradient-to-r from-brand-300 to-brand-200 bg-clip-text text-transparent">For Cash</span>
           </h1>
-          <p className="mt-4 text-brand-200/90 text-lg max-w-md mx-auto leading-relaxed">
+          <p className="mt-4 text-brand-100 text-lg max-w-md mx-auto leading-relaxed">
             Books, DVDs, CDs, and video games. Instant offers, free shipping, fast payment.
           </p>
 
@@ -95,8 +95,10 @@ export default function HomePage() {
 
           {/* Search bar */}
           <form ref={searchRef} onSubmit={handleSearch} className="mt-4 relative max-w-xl mx-auto">
+            <label htmlFor="home-search" className="sr-only">Search by ISBN, UPC, or title</label>
             <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
             <input
+              id="home-search"
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -111,7 +113,7 @@ export default function HomePage() {
               {loading ? <Loader2 size={16} className="animate-spin" /> : 'Get Quote'}
             </button>
           </form>
-          <p className="mt-2 text-xs text-white/50">Or type an ISBN / UPC above</p>
+          <p className="mt-2 text-xs text-white/70">Or type an ISBN / UPC above</p>
 
           {/* Trust badges */}
           <div className="flex justify-center items-center gap-6 sm:gap-8 mt-7 text-white/70 text-sm">
@@ -123,7 +125,7 @@ export default function HomePage() {
           </div>
 
           {/* Social proof line */}
-          <p className="mt-4 text-white/50 text-xs tracking-wide">
+          <p className="mt-4 text-white/70 text-xs tracking-wide">
             Serving sellers nationwide — books, textbooks, DVDs, CDs, and video games
           </p>
         </div>
@@ -138,7 +140,7 @@ export default function HomePage() {
           </div>
         )}
         {error && !loading && (
-          <div className="bg-reject-light border border-reject/20 rounded-[var(--radius-lg)] p-4 text-center mt-6">
+          <div role="alert" className="bg-reject-light border border-reject/20 rounded-[var(--radius-lg)] p-4 text-center mt-6">
             <p className="text-sm text-reject font-medium">{error}</p>
             <p className="mt-1 text-xs text-text-muted">Try a different barcode or search term.</p>
           </div>
@@ -300,7 +302,7 @@ export default function HomePage() {
           <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">
             Ready to declutter?
           </h2>
-          <p className="mt-3 text-base text-brand-200/90">
+          <p className="mt-3 text-base text-brand-100">
             Get an instant quote for your items. No obligation, no fees.
           </p>
           <button
