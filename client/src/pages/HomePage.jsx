@@ -87,34 +87,34 @@ export default function HomePage() {
             ))}
           </div>
 
+          {/* Scan button — big and obvious */}
+          <button
+            onClick={() => setScannerOpen(true)}
+            className="mt-6 mx-auto flex items-center justify-center gap-3 bg-white hover:bg-brand-50 text-brand-700 font-bold text-lg px-8 py-4 rounded-2xl shadow-xl shadow-black/15 cursor-pointer active:scale-[0.97] min-h-[60px]"
+          >
+            <Camera size={24} />
+            Scan Barcode
+          </button>
+
           {/* Search bar */}
-          <form ref={searchRef} onSubmit={handleSearch} className="mt-6 relative max-w-xl mx-auto">
+          <form ref={searchRef} onSubmit={handleSearch} className="mt-4 relative max-w-xl mx-auto">
             <Search size={20} className="absolute left-5 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={placeholders[activeCategory]}
-              className="w-full pl-13 pr-32 py-4.5 rounded-2xl bg-white text-text-primary placeholder:text-text-muted text-base focus:outline-none focus:ring-3 focus:ring-brand-400/40 min-h-[60px] shadow-xl shadow-black/15"
+              className="w-full pl-13 pr-28 py-3.5 rounded-2xl bg-white/90 text-text-primary placeholder:text-text-muted text-base focus:outline-none focus:ring-3 focus:ring-brand-400/40 min-h-[52px] shadow-lg shadow-black/10"
             />
-            <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setScannerOpen(true)}
-                className="w-11 h-11 flex items-center justify-center rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 cursor-pointer"
-                aria-label="Scan barcode"
-              >
-                <Camera size={20} />
-              </button>
-              <button
-                type="submit"
-                disabled={loading || !searchQuery.trim()}
-                className="px-5 h-11 flex items-center justify-center rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm cursor-pointer"
-              >
-                {loading ? <Loader2 size={16} className="animate-spin" /> : 'Get Quote'}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={loading || !searchQuery.trim()}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 px-5 h-10 flex items-center justify-center rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-sm cursor-pointer"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : 'Get Quote'}
+            </button>
           </form>
+          <p className="mt-2 text-xs text-white/50">Or type an ISBN / UPC above</p>
 
           {/* Trust badges */}
           <div className="flex justify-center items-center gap-6 sm:gap-8 mt-7 text-white/70 text-sm">
