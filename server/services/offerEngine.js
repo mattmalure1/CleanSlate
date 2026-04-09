@@ -56,6 +56,46 @@ function detectCategory(product) {
 }
 
 // ============================================================
+// GATED BRANDS/ASINS BLOCKLIST
+// Items we can't sell on Amazon FBA due to brand gating
+// Add ASINs or brand name patterns as you discover them
+// ============================================================
+
+const GATED_ASINS = new Set([
+  // Add specific ASINs here as you find them
+  // 'B00EXAMPLE1',
+]);
+
+const GATED_BRAND_PATTERNS = [
+  // Common gated media brands — add as you discover
+  /disney/i,
+  /studio ghibli/i,
+  /criterion collection/i,
+  // Add more patterns as needed:
+  // /brand name/i,
+];
+
+function isGated(product) {
+  // Check ASIN blocklist
+  if (product.asin && GATED_ASINS.has(product.asin)) {
+    return { gated: true, reason: 'asin_blocked', brand: product.asin };
+  }
+
+  // Check brand patterns
+  const brand = (product.brand || '').toLowerCase();
+  const manufacturer = (product.manufacturer || '').toLowerCase();
+  const title = (product.title || '').toLowerCase();
+
+  for (const pattern of GATED_BRAND_PATTERNS) {
+    if (pattern.test(brand) || pattern.test(manufacturer) || pattern.test(title)) {
+      return { gated: true, reason: 'brand_gated', brand: pattern.source };
+    }
+  }
+
+  return { gated: false };
+}
+
+// ============================================================
 // TRIGGER TABLES — full scouting tool config per tier
 // Each tier: { maxRank, fbaSlot, usedSlot, selectBBifLower, selectBBifHigher,
 //              offNewBB, offAmazon, targetProfit (cents), reject }
@@ -536,6 +576,12 @@ function calculateOffer(product, hasCase = true, pricingMode = 'buyback', condit
     return { ...meta, status: 'rejected', reason: 'unsupported_category', message: "Sorry, we only accept books, DVDs, CDs, and video games", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity } };
   }
 
+  // Check if item is gated on Amazon
+  const gatingCheck = isGated(product);
+  if (gatingCheck.gated) {
+    return { ...meta, status: 'rejected', reason: 'brand_gated', message: "Sorry, we're unable to accept this item at this time", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity, gating: gatingCheck } };
+  }
+
   const salesRank = velocity.salesRank;
   // Use the WORSE of current rank vs 90-day average rank for tier selection
   // This prevents items with a temporary rank spike from getting T1 pricing
@@ -789,6 +835,7 @@ function calculateOffer(product, hasCase = true, pricingMode = 'buyback', condit
 
 module.exports = {
   calculateOffer, detectCategory, getSellPrice, getSellPriceSource,
+  isGated, GATED_ASINS, GATED_BRAND_PATTERNS,
   getSlotPrice, getUsedSlotPrice, getAllConditionPrices, getWeightLbs, getSalesRank,
   getTargetProfit, getTrigger, getFbaFee, getKeepaFbaFee, getMediaMailCost,
   getVelocity, getAverageUsedPrice, getFbaUsedAvgPrice, TRIGGERS,
