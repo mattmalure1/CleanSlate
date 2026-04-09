@@ -37,9 +37,9 @@ export default function HomePage() {
   const searchRef = useRef(null);
 
   const handleScan = useCallback((code) => {
-    // Small delay to let html5-qrcode stop before unmounting the component
-    setTimeout(() => { setScannerOpen(false); fetchQuote(code); }, 300);
-  }, [fetchQuote]);
+    // Scanner now handles its own results display
+    // This callback is just for logging/tracking
+  }, []);
   function handleSearch(e) { e.preventDefault(); const q = searchQuery.trim(); if (q) fetchQuote(q); }
   function handleCaseToggle(hasCase) { if (result?.asin) requote(result.asin, hasCase); }
   function scrollToSearch() { searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }

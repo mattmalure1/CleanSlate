@@ -1,19 +1,39 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, Camera } from 'lucide-react';
+import { X, Camera, ShoppingCart, Trash2, Check, Loader2 } from 'lucide-react';
+import { apiUrl } from '../api';
+import { useCart } from '../context/CartContext';
 
 export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
+  const { addItem } = useCart();
   const onScanRef = useRef(onScan);
   const onCloseRef = useRef(onClose);
   const scannerRef = useRef(null);
   const [error, setError] = useState(null);
   const [ready, setReady] = useState(false);
-  const [lastScanned, setLastScanned] = useState(null);
-  const [scanCount, setScanCount] = useState(0);
+  const [items, setItems] = useState([]);
+  const [lookingUp, setLookingUp] = useState(null);
   const recentScans = useRef(new Set());
   const stopped = useRef(false);
 
   onScanRef.current = onScan;
   onCloseRef.current = onClose;
+
+  // Lookup a scanned code
+  async function lookupCode(code) {
+    setLookingUp(code);
+    try {
+      const res = await fetch(apiUrl(`/api/quote?code=${encodeURIComponent(code)}&hasCase=true&condition=good`));
+      const data = await res.json();
+      if (!res.ok) {
+        setItems(prev => [{ code, title: 'Not found', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 }, ...prev]);
+      } else {
+        setItems(prev => [{ code, ...data }, ...prev]);
+      }
+    } catch {
+      setItems(prev => [{ code, title: 'Lookup failed', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 }, ...prev]);
+    }
+    setLookingUp(null);
+  }
 
   useEffect(() => {
     let scanner = null;
@@ -21,38 +41,34 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
     async function init() {
       try {
         const { Html5Qrcode } = await import('html5-qrcode');
-
-        // Wait for DOM
         await new Promise(r => setTimeout(r, 200));
         if (stopped.current) return;
 
         scanner = new Html5Qrcode('scanner-region');
         scannerRef.current = scanner;
 
-        // Get camera device ID — prefer back camera
         const devices = await Html5Qrcode.getCameras();
         if (!devices || devices.length === 0) {
-          setError('No camera found on this device.');
+          setError('No camera found.');
           return;
         }
 
-        // Pick back camera if available
-        const backCam = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('rear') || d.label.toLowerCase().includes('environment'));
+        const backCam = devices.find(d =>
+          /back|rear|environment/i.test(d.label)
+        );
         const cameraId = backCam ? backCam.id : devices[devices.length - 1].id;
 
         await scanner.start(
           cameraId,
           {
-            fps: 10,
-            qrbox: { width: 250, height: 120 },
+            fps: 15,
+            qrbox: { width: 300, height: 100 }, // Wide barcode shape, easier from distance
+            aspectRatio: 16 / 9,
           },
           (text) => {
             if (recentScans.current.has(text)) return;
             recentScans.current.add(text);
-            setTimeout(() => recentScans.current.delete(text), 3000);
-
-            setLastScanned(text);
-            setScanCount(p => p + 1);
+            setTimeout(() => recentScans.current.delete(text), 4000);
 
             // Beep
             try {
@@ -60,36 +76,25 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
               const o = ctx.createOscillator();
               const g = ctx.createGain();
               o.connect(g); g.connect(ctx.destination);
-              o.frequency.value = 880; g.gain.value = 0.1;
-              o.start(); o.stop(ctx.currentTime + 0.1);
+              o.frequency.value = 880; g.gain.value = 0.15;
+              o.start(); o.stop(ctx.currentTime + 0.08);
             } catch {}
 
-            if (rapid) {
-              onScanRef.current(text);
-            } else {
-              // Stop scanner, wait, then callback
-              stopped.current = true;
-              scanner.stop().then(() => {
-                scannerRef.current = null;
-                onScanRef.current(text);
-              }).catch(() => {
-                scannerRef.current = null;
-                onScanRef.current(text);
-              });
-            }
+            // Always lookup (rapid behavior built-in)
+            lookupCode(text);
+            onScanRef.current(text);
           },
-          () => {} // ignore per-frame failures
+          () => {}
         );
 
         setReady(true);
       } catch (err) {
         if (stopped.current) return;
-        const msg = String(err?.message || err);
-        if (msg.includes('Permission') || msg.includes('NotAllowed')) {
-          setError('Camera access denied. Please allow camera access in your browser settings and try again.');
+        if (String(err).includes('Permission') || String(err).includes('NotAllowed')) {
+          setError('Camera access denied. Allow camera in browser settings.');
         } else {
-          setError('Could not start camera. Please use the search box instead.');
-          console.error('Scanner init error:', err);
+          setError('Could not start camera.');
+          console.error(err);
         }
       }
     }
@@ -103,70 +108,151 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         scannerRef.current = null;
       }
     };
-  }, [rapid]);
+  }, []);
 
   function handleClose() {
     stopped.current = true;
+    const doClose = () => onCloseRef.current();
     if (scannerRef.current) {
-      scannerRef.current.stop().then(() => {
-        scannerRef.current = null;
-        onCloseRef.current();
-      }).catch(() => {
-        scannerRef.current = null;
-        onCloseRef.current();
-      });
+      scannerRef.current.stop().then(doClose).catch(doClose);
+      scannerRef.current = null;
     } else {
-      onCloseRef.current();
+      doClose();
     }
   }
 
+  function removeItem(code) {
+    setItems(prev => prev.filter(i => i.code !== code));
+  }
+
+  function addAllToCart() {
+    const accepted = items.filter(i => i.status === 'accepted' || i.status === 'low');
+    accepted.forEach(item => {
+      addItem({
+        asin: item.asin,
+        title: item.title,
+        imageUrl: item.imageUrl,
+        offerCents: item.offerCents,
+        offerDisplay: item.offerDisplay,
+        category: item.category,
+        isDisc: item.isDisc,
+        hasCase: item.hasCase,
+        color: item.color,
+        label: item.label,
+      });
+    });
+    handleClose();
+  }
+
+  const acceptedCount = items.filter(i => i.status === 'accepted' || i.status === 'low').length;
+  const totalCents = items.filter(i => i.status === 'accepted' || i.status === 'low').reduce((s, i) => s + (i.offerCents || 0), 0);
+
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <button
-        onClick={handleClose}
-        className="absolute top-4 right-4 z-10 bg-black/60 text-white rounded-full p-2.5 min-w-[48px] min-h-[48px] flex items-center justify-center backdrop-blur-md cursor-pointer"
-        aria-label="Close scanner"
-      >
-        <X size={24} />
-      </button>
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-4 py-3 bg-black/80 z-10">
+        <button onClick={handleClose} className="text-white min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer">
+          <X size={24} />
+        </button>
+        <span className="text-white font-semibold text-sm">
+          {items.length > 0 ? `${items.length} scanned` : 'Scan barcodes'}
+        </span>
+        {acceptedCount > 0 && (
+          <button
+            onClick={addAllToCart}
+            className="bg-brand-500 text-white text-sm font-bold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer min-h-[44px]"
+          >
+            <ShoppingCart size={16} />
+            Add {acceptedCount} · ${(totalCents / 100).toFixed(2)}
+          </button>
+        )}
+        {acceptedCount === 0 && <div className="w-[44px]" />}
+      </div>
 
-      {rapid && scanCount > 0 && (
-        <div className="absolute top-4 left-4 z-10 bg-brand-600 text-white rounded-full px-4 py-2 text-sm font-bold">
-          {scanCount} scanned
-        </div>
-      )}
-
-      <div className="flex-1 relative overflow-hidden bg-black">
+      {/* Camera */}
+      <div className="relative flex-1 overflow-hidden bg-black">
         <div id="scanner-region" className="w-full h-full" />
 
         {!error && !ready && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-3 bg-black z-20">
             <Camera size={40} className="animate-pulse" />
             <p className="text-sm">Starting camera...</p>
-            <p className="text-xs text-white/50">Allow camera access when prompted</p>
+          </div>
+        )}
+
+        {/* Barcode-shaped scan guide overlay */}
+        {ready && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+            <div className="relative">
+              {/* Barcode lines illustration */}
+              <div className="flex items-end gap-[2px] opacity-30">
+                {[20,28,14,24,18,30,12,26,16,28,22,14,30,18,24,12,28,20,26,14,22,30,16,28,18,24,20,12,26,22].map((h, i) => (
+                  <div key={i} className="w-[3px] bg-white rounded-sm" style={{ height: h }} />
+                ))}
+              </div>
+              {/* Scan line animation */}
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-brand-400 animate-pulse" />
+            </div>
+          </div>
+        )}
+
+        {/* Looking up indicator */}
+        {lookingUp && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin" />
+            Looking up {lookingUp}...
           </div>
         )}
       </div>
 
-      <div className="bg-black/90 text-center py-4 px-6">
-        {error ? (
-          <div className="space-y-3">
-            <p className="text-red-400 text-sm">{error}</p>
-            <button onClick={handleClose} className="text-white text-sm underline min-h-[44px] cursor-pointer">
-              Go back
-            </button>
-          </div>
-        ) : (
-          <div>
-            <p className="text-white text-sm font-medium">
-              {rapid ? 'Rapid Scan — keep pointing at barcodes' : 'Point camera at barcode'}
-            </p>
-            {rapid && lastScanned && (
-              <p className="text-brand-400 text-xs mt-1">Last: {lastScanned}</p>
-            )}
-          </div>
-        )}
-      </div>
+      {/* Results list (bottom overlay) */}
+      {items.length > 0 && (
+        <div className="bg-black/95 max-h-[35vh] overflow-y-auto border-t border-white/10">
+          {items.map((item, i) => {
+            const ok = item.status === 'accepted' || item.status === 'low';
+            return (
+              <div key={`${item.code}-${i}`} className="flex items-center gap-3 px-4 py-2.5 border-b border-white/5">
+                {item.imageUrl ? (
+                  <img src={item.imageUrl} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
+                ) : (
+                  <div className={`w-10 h-10 rounded flex items-center justify-center flex-shrink-0 ${ok ? 'bg-brand-900' : 'bg-red-900/50'}`}>
+                    {ok ? <Check size={16} className="text-brand-400" /> : <X size={16} className="text-red-400" />}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm truncate">{item.title || item.code}</p>
+                  {item.category && <p className="text-white/40 text-xs capitalize">{item.category}</p>}
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {ok ? (
+                    <span className="text-brand-400 font-bold text-sm">{item.offerDisplay}</span>
+                  ) : (
+                    <span className="text-red-400 text-xs font-semibold">Pass</span>
+                  )}
+                  <button onClick={() => removeItem(item.code)} className="text-white/30 hover:text-red-400 min-w-[32px] min-h-[32px] flex items-center justify-center cursor-pointer">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Bottom instruction */}
+      {items.length === 0 && !error && (
+        <div className="bg-black/90 text-center py-4 px-6">
+          <p className="text-white text-sm font-medium">Point camera at any barcode</p>
+          <p className="text-white/40 text-xs mt-1">ISBN, UPC, or EAN — any orientation</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-black/90 text-center py-4 px-6">
+          <p className="text-red-400 text-sm">{error}</p>
+          <button onClick={handleClose} className="text-white text-sm underline mt-2 min-h-[44px] cursor-pointer">Go back</button>
+        </div>
+      )}
     </div>
   );
 }
