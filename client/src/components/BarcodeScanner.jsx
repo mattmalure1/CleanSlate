@@ -61,9 +61,9 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         await scanner.start(
           cameraId,
           {
-            fps: 15,
-            qrbox: { width: 350, height: 150 }, // Large scan area for reading from distance
-            aspectRatio: 16 / 9,
+            fps: 20,
+            // No qrbox = scan the ENTIRE camera frame (like real scanner apps)
+            // This allows reading barcodes from any distance/position
           },
           (text) => {
             if (recentScans.current.has(text)) return;
