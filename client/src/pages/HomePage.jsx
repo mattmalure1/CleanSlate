@@ -33,13 +33,10 @@ export default function HomePage() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('book');
-  const { loading, result, error, fetchQuote, requote } = useQuote();
+  const { loading, result, error, fetchQuote, requote, setResult } = useQuote();
   const searchRef = useRef(null);
 
-  const handleScan = useCallback((code) => {
-    // Scanner now handles its own results display
-    // This callback is just for logging/tracking
-  }, []);
+  const handleScan = useCallback(() => {}, []);
   function handleSearch(e) { e.preventDefault(); const q = searchQuery.trim(); if (q) fetchQuote(q); }
   function handleCaseToggle(hasCase) { if (result?.asin) requote(result.asin, hasCase); }
   function scrollToSearch() { searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
@@ -89,7 +86,7 @@ export default function HomePage() {
 
           {/* Scan button — big and obvious */}
           <button
-            onClick={() => setScannerOpen(true)}
+            onClick={() => { setScannerOpen(true); setResult(null); setSearchQuery(''); }}
             className="mt-6 mx-auto flex items-center justify-center gap-3 bg-white hover:bg-brand-50 text-brand-700 font-bold text-lg px-8 py-4 rounded-2xl shadow-xl shadow-black/15 cursor-pointer active:scale-[0.97] min-h-[60px]"
           >
             <Camera size={24} />

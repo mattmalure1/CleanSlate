@@ -130,6 +130,7 @@ export default function CheckoutPage() {
               <p className="text-sm font-bold text-brand-700">{item.offerDisplay}</p>
               <button
                 onClick={() => removeItem(item.id)}
+                disabled={submitting}
                 className="p-1.5 text-text-muted hover:text-reject transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center rounded-md hover:bg-reject-light"
                 aria-label={`Remove ${item.title}`}
               >
@@ -234,7 +235,7 @@ export default function CheckoutPage() {
               <button
                 key={method}
                 type="button"
-                onClick={() => updateField('payoutMethod', method)}
+                onClick={() => { updateField('payoutMethod', method); updateField('payoutEmail', ''); }}
                 className={`py-3 rounded-[var(--radius-md)] text-sm font-semibold capitalize transition-all min-h-[48px] ${
                   form.payoutMethod === method
                     ? 'bg-brand-600 text-white'

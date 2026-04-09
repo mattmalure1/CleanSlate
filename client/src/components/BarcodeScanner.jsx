@@ -25,12 +25,12 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
       const res = await fetch(apiUrl(`/api/quote?code=${encodeURIComponent(code)}&hasCase=true&condition=good`));
       const data = await res.json();
       if (!res.ok) {
-        setItems(prev => [{ code, title: 'Not found', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 }, ...prev]);
+        setItems(prev => [{ id: crypto.randomUUID(), code, title: 'Not found', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 }, ...prev]);
       } else {
-        setItems(prev => [{ code, ...data }, ...prev]);
+        setItems(prev => [{ id: crypto.randomUUID(), code, ...data }, ...prev]);
       }
     } catch {
-      setItems(prev => [{ code, title: 'Lookup failed', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 }, ...prev]);
+      setItems(prev => [{ id: crypto.randomUUID(), code, title: 'Lookup failed', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 }, ...prev]);
     }
     setLookingUp(null);
   }
@@ -62,7 +62,7 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
           cameraId,
           {
             fps: 15,
-            qrbox: { width: 300, height: 100 }, // Wide barcode shape, easier from distance
+            qrbox: { width: 350, height: 150 }, // Large scan area for reading from distance
             aspectRatio: 16 / 9,
           },
           (text) => {
@@ -121,8 +121,8 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
     }
   }
 
-  function removeItem(code) {
-    setItems(prev => prev.filter(i => i.code !== code));
+  function removeItem(id) {
+    setItems(prev => prev.filter(i => i.id !== id));
   }
 
   function addAllToCart() {
@@ -229,7 +229,7 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
                   ) : (
                     <span className="text-red-400 text-xs font-semibold">Pass</span>
                   )}
-                  <button onClick={() => removeItem(item.code)} className="text-white/30 hover:text-red-400 min-w-[32px] min-h-[32px] flex items-center justify-center cursor-pointer">
+                  <button onClick={() => removeItem(item.id)} className="text-white/30 hover:text-red-400 min-w-[32px] min-h-[32px] flex items-center justify-center cursor-pointer">
                     <Trash2 size={14} />
                   </button>
                 </div>

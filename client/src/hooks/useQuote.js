@@ -33,6 +33,8 @@ export function useQuote() {
 
   const requote = useCallback(async (code, hasCase) => {
     setLoading(true);
+    setError(null);
+    setResult(null);
     try {
       const res = await fetch(apiUrl(`/api/requote?code=${encodeURIComponent(code)}&hasCase=${hasCase}`));
       const data = await res.json();
