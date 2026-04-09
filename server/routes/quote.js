@@ -14,7 +14,8 @@ router.get('/api/quote', async (req, res) => {
       return res.status(400).json({ error: 'Missing required parameter: code' });
     }
 
-    const keepaResponse = await keepa.lookupByCode(code);
+    // Fast lookup for customer quotes — fewer Keepa params, faster response
+    const keepaResponse = await keepa.lookupByCodeFast(code);
 
     if (!keepaResponse.products || keepaResponse.products.length === 0) {
       return res.status(404).json({ error: "We couldn't find this item" });

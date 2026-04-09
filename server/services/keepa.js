@@ -72,4 +72,54 @@ function getCacheStats() {
   };
 }
 
-module.exports = { lookupByCode, getCacheStats };
+// Fast lookup — fewer params, lower token cost, faster response
+// Used for customer-facing quotes where we don't need full stats/offers
+async function lookupByCodeFast(code) {
+  // Check full cache first — if we already have the full data, use it
+  const cached = cache.get(code);
+  if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+    cacheHits++;
+    return cached.data;
+  }
+
+  // Also check fast cache
+  const fastCached = cache.get('fast_' + code);
+  if (fastCached && Date.now() - fastCached.cachedAt < CACHE_TTL_MS) {
+    cacheHits++;
+    return fastCached.data;
+  }
+
+  cacheMisses++;
+
+  // Lighter request — no offers array, shorter stats window
+  const url = `https://api.keepa.com/product?key=${KEEPA_API_KEY}&domain=1&code=${code}&stats=180`;
+
+  const response = await fetch(url, {
+    headers: { 'Accept-Encoding': 'gzip, deflate' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Keepa API error: ${response.status} ${response.statusText}`);
+  }
+
+  let data;
+  const contentEncoding = response.headers.get('content-encoding');
+  if (contentEncoding === 'gzip') {
+    const buffer = await response.buffer();
+    try {
+      const decompressed = zlib.gunzipSync(buffer);
+      data = JSON.parse(decompressed.toString());
+    } catch (e) {
+      data = JSON.parse(buffer.toString());
+    }
+  } else {
+    data = await response.json();
+  }
+
+  // Cache as fast result
+  cache.set('fast_' + code, { data, cachedAt: Date.now() });
+
+  return data;
+}
+
+module.exports = { lookupByCode, lookupByCodeFast, getCacheStats };

@@ -45,20 +45,14 @@ export default function BulkPage() {
   }, []);
 
   // Rapid scan: each barcode detected adds to results
+  // Rapid scan: camera stays open, each scan fires a lookup in background
   const handleRapidScan = useCallback(async (code) => {
-    setScannerOpen(false);
-    // Check if already scanned
-    if (results.some(r => r.code === code || r.asin === code)) {
-      // Reopen scanner for next item
-      setTimeout(() => setScannerOpen(true), 500);
-      return;
-    }
-    setLoading(true);
-    const result = await lookupSingle(code);
-    setResults(prev => [result, ...prev]);
-    setLoading(false);
-    // Auto-reopen scanner for continuous scanning
-    setTimeout(() => setScannerOpen(true), 800);
+    // Skip if already scanned
+    if (results.some(r => r.code === code || r.asin === code)) return;
+    // Lookup in background — don't block the scanner
+    lookupSingle(code).then(result => {
+      setResults(prev => [result, ...prev]);
+    });
   }, [lookupSingle, results]);
 
   // Bulk lookup: paste or CSV
@@ -391,6 +385,7 @@ export default function BulkPage() {
         <BarcodeScanner
           onScan={handleRapidScan}
           onClose={() => setScannerOpen(false)}
+          rapid={true}
         />
       )}
     </div>
