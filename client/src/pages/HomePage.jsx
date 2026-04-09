@@ -36,7 +36,10 @@ export default function HomePage() {
   const { loading, result, error, fetchQuote, requote } = useQuote();
   const searchRef = useRef(null);
 
-  const handleScan = useCallback((code) => { setScannerOpen(false); fetchQuote(code); }, [fetchQuote]);
+  const handleScan = useCallback((code) => {
+    // Small delay to let html5-qrcode stop before unmounting the component
+    setTimeout(() => { setScannerOpen(false); fetchQuote(code); }, 300);
+  }, [fetchQuote]);
   function handleSearch(e) { e.preventDefault(); const q = searchQuery.trim(); if (q) fetchQuote(q); }
   function handleCaseToggle(hasCase) { if (result?.asin) requote(result.asin, hasCase); }
   function scrollToSearch() { searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
