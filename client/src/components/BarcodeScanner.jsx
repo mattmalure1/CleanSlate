@@ -18,7 +18,7 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
   onScanRef.current = onScan;
   onCloseRef.current = onClose;
 
-  // Lookup a scanned code
+  // Lookup a scanned code — auto-adds accepted items to cart
   async function lookupCode(code) {
     setLookingUp(code);
     try {
@@ -27,7 +27,23 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
       if (!res.ok) {
         setItems(prev => [{ id: crypto.randomUUID(), code, title: 'Not found', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 }, ...prev]);
       } else {
-        setItems(prev => [{ id: crypto.randomUUID(), code, ...data }, ...prev]);
+        const item = { id: crypto.randomUUID(), code, ...data };
+        setItems(prev => [item, ...prev]);
+        // Auto-add accepted items to cart immediately
+        if (data.status === 'accepted' || data.status === 'low') {
+          addItem({
+            asin: data.asin,
+            title: data.title,
+            imageUrl: data.imageUrl,
+            offerCents: data.offerCents,
+            offerDisplay: data.offerDisplay,
+            category: data.category,
+            isDisc: data.isDisc,
+            hasCase: data.hasCase,
+            color: data.color,
+            label: data.label,
+          });
+        }
       }
     } catch {
       setItems(prev => [{ id: crypto.randomUUID(), code, title: 'Lookup failed', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 }, ...prev]);
@@ -116,6 +132,11 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
   }, []);
 
   function handleClose() {
+    // Warn if there are items still being looked up
+    if (lookingUp) {
+      if (!window.confirm('A lookup is still in progress. Close anyway?')) return;
+    }
+
     stopped.current = true;
     const doClose = () => onCloseRef.current();
     if (scannerRef.current) {
@@ -128,25 +149,6 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
 
   function removeItem(id) {
     setItems(prev => prev.filter(i => i.id !== id));
-  }
-
-  function addAllToCart() {
-    const accepted = items.filter(i => i.status === 'accepted' || i.status === 'low');
-    accepted.forEach(item => {
-      addItem({
-        asin: item.asin,
-        title: item.title,
-        imageUrl: item.imageUrl,
-        offerCents: item.offerCents,
-        offerDisplay: item.offerDisplay,
-        category: item.category,
-        isDisc: item.isDisc,
-        hasCase: item.hasCase,
-        color: item.color,
-        label: item.label,
-      });
-    });
-    handleClose();
   }
 
   const acceptedCount = items.filter(i => i.status === 'accepted' || i.status === 'low').length;
@@ -162,16 +164,12 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         <span className="text-white font-semibold text-sm">
           {items.length > 0 ? `${items.length} scanned` : 'Scan barcodes'}
         </span>
-        {acceptedCount > 0 && (
-          <button
-            onClick={addAllToCart}
-            className="bg-brand-500 text-white text-sm font-bold px-4 py-2 rounded-full flex items-center gap-1.5 cursor-pointer min-h-[44px]"
-          >
+        {acceptedCount > 0 ? (
+          <span className="bg-brand-500 text-white text-sm font-bold px-4 py-2 rounded-full flex items-center gap-1.5">
             <ShoppingCart size={16} />
-            Add {acceptedCount} · ${(totalCents / 100).toFixed(2)}
-          </button>
-        )}
-        {acceptedCount === 0 && <div className="w-[44px]" />}
+            {acceptedCount} in cart · ${(totalCents / 100).toFixed(2)}
+          </span>
+        ) : <div className="w-[44px]" />}
       </div>
 
       {/* Camera */}
@@ -230,7 +228,7 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {ok ? (
-                    <span className="text-brand-400 font-bold text-sm">{item.offerDisplay}</span>
+                    <span className="text-brand-400 font-bold text-sm">{item.offerDisplay} <Check size={12} className="inline" /></span>
                   ) : (
                     <span className="text-red-400 text-xs font-semibold">Pass</span>
                   )}
