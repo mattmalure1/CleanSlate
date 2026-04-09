@@ -59,11 +59,16 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         const cameraId = backCam ? backCam.id : devices[devices.length - 1].id;
 
         await scanner.start(
-          cameraId,
+          { deviceId: { exact: cameraId } },
           {
-            fps: 20,
-            // No qrbox = scan the ENTIRE camera frame (like real scanner apps)
-            // This allows reading barcodes from any distance/position
+            fps: 15,
+            qrbox: { width: 500, height: 200 },
+            videoConstraints: {
+              deviceId: { exact: cameraId },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              focusMode: 'continuous',
+            },
           },
           (text) => {
             if (recentScans.current.has(text)) return;
