@@ -118,32 +118,45 @@ function getVelocity(product, category) {
   const salesRank = getSalesRank(product);
   const stats = product.stats || {};
 
-  // Use Keepa's actual rank drops when available (from stats=180 param)
+  // Rank drops from Keepa stats
   const rankDrops30 = stats.salesRankDrops30 ?? null;
   const rankDrops90 = stats.salesRankDrops90 ?? null;
   const rankDrops180 = stats.salesRankDrops180 ?? null;
 
-  // Best monthly sales estimate: rank drops 30d is the most reliable
-  // monthlySoldHistory can be stale (contains -1 values meaning data stopped)
+  // 6-month average monthly sales (primary — most stable, smooths seasonal swings)
+  let avgMonthlySales6mo = null;
+  if (rankDrops180 != null && rankDrops180 > 0) {
+    avgMonthlySales6mo = Math.round(rankDrops180 / 6);
+  }
+
+  // Current 30-day sales (for trend detection)
+  let currentMonthlySales = null;
+  if (rankDrops30 != null) {
+    currentMonthlySales = rankDrops30;
+  }
+
+  // Amazon's monthlySoldHistory if available and not stale
+  let amazonMonthlySold = null;
+  const history = product.monthlySoldHistory;
+  if (history && history.length >= 2) {
+    const lastVal = history[history.length - 1];
+    if (lastVal > 0) amazonMonthlySold = lastVal;
+  }
+
+  // Determine the monthly sales figure for tier assignment
+  // Priority: 6-month average (most stable) → Amazon data → 30-day drops → rank estimate
   let monthlySales = null;
   let source = 'rank_estimate';
 
-  // Primary: rank drops in last 30 days (each drop ≈ 1 sale)
-  if (rankDrops30 != null && rankDrops30 > 0) {
-    monthlySales = rankDrops30;
+  if (avgMonthlySales6mo != null) {
+    monthlySales = avgMonthlySales6mo;
+    source = 'rank_drops_180d_avg';
+  } else if (amazonMonthlySold != null) {
+    monthlySales = amazonMonthlySold;
+    source = 'keepa_monthly_sold';
+  } else if (currentMonthlySales != null && currentMonthlySales > 0) {
+    monthlySales = currentMonthlySales;
     source = 'rank_drops_30d';
-  }
-
-  // Fallback: monthlySoldHistory — but only if the latest value is > 0 (not -1/stale)
-  if (monthlySales === null) {
-    const history = product.monthlySoldHistory;
-    if (history && history.length >= 2) {
-      const lastVal = history[history.length - 1];
-      if (lastVal > 0) {
-        monthlySales = lastVal;
-        source = 'keepa_monthly_sold';
-      }
-    }
   }
 
   // Fallback: estimate from rank + category
@@ -171,6 +184,15 @@ function getVelocity(product, category) {
     }
   }
 
+  // Trend detection: compare current 30d vs 6-month average
+  // > 1.5 = accelerating, < 0.5 = decelerating
+  let trend = 'stable';
+  if (avgMonthlySales6mo != null && avgMonthlySales6mo > 0 && currentMonthlySales != null) {
+    const ratio = currentMonthlySales / avgMonthlySales6mo;
+    if (ratio > 1.5) trend = 'accelerating';
+    else if (ratio < 0.5) trend = 'decelerating';
+  }
+
   // Sales rank averages from stats
   const rankAvg30 = stats.avg30?.[3] > 0 ? stats.avg30[3] : null;
   const rankAvg90 = stats.avg90?.[3] > 0 ? stats.avg90[3] : null;
@@ -183,7 +205,8 @@ function getVelocity(product, category) {
   else { velocityTier = 'very_slow'; velocityLabel = 'Very Slow'; }
 
   return {
-    monthlySales, velocityTier, velocityLabel, salesRank, source,
+    monthlySales, avgMonthlySales6mo, currentMonthlySales, trend,
+    velocityTier, velocityLabel, salesRank, source,
     rankDrops30, rankDrops90, rankDrops180,
     rankAvg30, rankAvg90, rankAvg180,
   };
@@ -524,42 +547,33 @@ function calculateOffer(product, hasCase = true, pricingMode = 'buyback', condit
     return { ...meta, status: 'rejected', reason: 'rank_too_high', message: "Sorry, there's not enough demand for this item right now", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity, salesRank, effectiveRank, trigger: trigger || null } };
   }
 
-  // Velocity sanity check using the best available data
-  // Amazon's monthlySold (from monthlySoldHistory) is authoritative when available
-  // rankDrops30 is the fallback when Amazon data is stale or missing
-  const monthlySold = velocity.monthlySales;
-  const velocitySource = velocity.source;
-  const drops30 = velocity.rankDrops30;
+  // Velocity adjustments using 6-month baseline + 30-day trend
+  const monthlySold = velocity.monthlySales; // 6-month avg (primary) or fallback
+  const avg6mo = velocity.avgMonthlySales6mo;
+  const current30d = velocity.currentMonthlySales;
+  const trend = velocity.trend;
   const tiers = TRIGGERS[category];
 
-  if (velocitySource === 'keepa_monthly_sold' && monthlySold > 0) {
-    // Amazon's own data — most trustworthy
-    if (monthlySold >= 50 && trigger.tier > 1) {
-      // Amazon says 50+/month — promote to T1 (high confidence)
-      const t1 = tiers.find(t => t.tier === 1);
-      if (t1) trigger = t1;
-    } else if (monthlySold < 5 && trigger.tier === 1) {
-      // Amazon says < 5/month but rank says T1 — demote to T2
-      const t2 = tiers.find(t => t.tier === 2);
-      if (t2) trigger = t2;
-    } else if (monthlySold < 2 && trigger.tier <= 2) {
-      // Amazon says barely selling — demote to T3
-      const t3 = tiers.find(t => t.tier === 3);
-      if (t3) trigger = t3;
+  // Promote/demote based on actual sales volume
+  if (monthlySold >= 50 && trigger.tier > 1) {
+    const t1 = tiers.find(t => t.tier === 1);
+    if (t1) trigger = t1;
+  } else if (monthlySold < 5 && trigger.tier === 1) {
+    const t2 = tiers.find(t => t.tier === 2);
+    if (t2) trigger = t2;
+  } else if (monthlySold < 2 && trigger.tier <= 2) {
+    const t3 = tiers.find(t => t.tier === 3);
+    if (t3) trigger = t3;
+    else {
+      return { ...meta, status: 'rejected', reason: 'no_recent_sales', message: "Sorry, this item hasn't sold recently enough for us to make an offer", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity, salesRank } };
     }
-  } else {
-    // No Amazon data — use rank drops as fallback
-    if (drops30 != null && drops30 < 3 && trigger.tier === 1) {
-      const t2 = tiers.find(t => t.tier === 2);
-      if (t2) trigger = t2;
-    }
-    if (drops30 != null && drops30 < 1 && trigger.tier <= 2) {
-      const t3 = tiers.find(t => t.tier === 3);
-      if (t3) trigger = t3;
-      else {
-        return { ...meta, status: 'rejected', reason: 'no_recent_sales', message: "Sorry, this item hasn't sold recently enough for us to make an offer", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity, salesRank } };
-      }
-    }
+  }
+
+  // Trend adjustment: if item is decelerating (current 30d < 50% of 6mo avg), demote one tier
+  // This catches items that WERE selling but are slowing down
+  if (trend === 'decelerating' && trigger.tier <= 2) {
+    const nextTier = tiers.find(t => t.tier === trigger.tier + 1);
+    if (nextTier && !nextTier.reject) trigger = nextTier;
   }
 
   const targetProfit = trigger.targetProfit;
