@@ -228,10 +228,20 @@ describe('Step 3: Hard rejections', () => {
 // STEP 4: Velocity + tier assignment
 // ============================================================
 describe('Step 4: Velocity + tier assignment', () => {
-  test('rejects 3 drops (below 4 floor)', () => {
+  test('3 drops with high price → eBay bundle fallback at $0.05', () => {
+    // Default fixture has $20 working price (>= $3 threshold) so low-velocity
+    // items get eBay bundle fallback instead of rejecting
     const r = run(makeExtracted({ sales_rank_drops_90: 3 }));
+    assert.equal(r.accepted, true);
+    assert.equal(r.is_penny_tier, true);
+    assert.equal(r.offer_cents, 5);
+    assert.equal(r.calculation_trace.ebay_fallback, true);
+    assert.equal(r.calculation_trace.ebay_fallback_reason, 'low_velocity');
+  });
+
+  test('3 drops with low price ($2) → genuine reject', () => {
+    const r = run(makeExtracted({ sales_rank_drops_90: 3, current_used_buybox_cents: 200, avg_90_day_used_buybox_cents: 200 }));
     assert.equal(r.accepted, false);
-    assert.equal(r.rejection_reason, 'Low velocity — sold fewer than 4 times in 90 days');
     assert.equal(r.calculation_trace.rejection_step, 4);
   });
 

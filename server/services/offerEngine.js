@@ -597,6 +597,27 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   trace.velocity_signal = rankDrops90;
 
   if (rankDrops90 < 4) {
+    // Low velocity on Amazon — but might still work in an eBay genre bundle.
+    // Gate: must have a used buybox price >= $3.00 (proves the item has real
+    // resale value, not just junk) and can't be a reject sub-category.
+    const EBAY_LOW_VELOCITY_MIN_PRICE = 300; // $3.00
+    const currentPrice = extractedFields.current_used_buybox_cents ?? extractedFields.current_new_3p_cents;
+    if (currentPrice && currentPrice >= EBAY_LOW_VELOCITY_MIN_PRICE) {
+      const subCat = classifySubCategory(category, extractedFields.title);
+      if (!subCat.reject) {
+        trace.final_offer_cents = 5;
+        trace.penny_tier_applied = true;
+        trace.penny_offer_cents = 5;
+        trace.penny_net_profit_cents = null;
+        trace.sub_category = subCat.subCategory;
+        trace.genre = subCat.genre || null;
+        trace.disposition = 'ebay_bundle';
+        trace.bundle_label = subCat.bundleLabel || formatBundleLabel(category, subCat.genre || 'mixed');
+        trace.ebay_fallback = true;
+        trace.ebay_fallback_reason = 'low_velocity';
+        return acceptWith(trace, 5, 'T4', true);
+      }
+    }
     return rejectWith(trace, 4, 'Low velocity — sold fewer than 4 times in 90 days',
       `sales_rank_drops_90=${rankDrops90}`);
   }
