@@ -726,6 +726,38 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   trace.net_resale_cents = netResale;
 
   if (netResale <= 0) {
+    // Amazon math is underwater — but the item might still work in an eBay
+    // genre bundle where there are NO per-item Amazon fees. A lot of 25
+    // horror DVDs sells for $15-30 on eBay. The per-item economics are:
+    //   revenue: ~$0.60-$1.20 per item (lot price / item count)
+    //   eBay fee: ~13% = ~$0.08-$0.16
+    //   shipping: amortized across box (~$0.09/item in a 60-item box)
+    //   net per item: ~$0.40-$0.90
+    // So $0.05 acquisition cost is viable if per-item net >= $0.25.
+    //
+    // We use the working price as a proxy for the item's eBay value in a
+    // bundle. Items with higher Amazon prices will have higher eBay bundle
+    // value too. The threshold: working_price >= $2.00 means the item has
+    // SOME resale value and belongs in a genre lot, not the trash.
+    const EBAY_BUNDLE_MIN_PRICE_CENTS = 200; // $2.00 minimum to be worth bundling
+    const EBAY_BUNDLE_OFFER_CENTS = 5;        // $0.05
+
+    if (workingPrice >= EBAY_BUNDLE_MIN_PRICE_CENTS) {
+      const subCat = classifySubCategory(category, extractedFields.title);
+      if (!subCat.reject) {
+        trace.final_offer_cents = EBAY_BUNDLE_OFFER_CENTS;
+        trace.penny_tier_applied = true;
+        trace.penny_offer_cents = EBAY_BUNDLE_OFFER_CENTS;
+        trace.penny_net_profit_cents = null; // not calculable per-item for eBay bundles
+        trace.sub_category = subCat.subCategory;
+        trace.genre = subCat.genre || null;
+        trace.disposition = 'ebay_bundle';
+        trace.bundle_label = subCat.bundleLabel || formatBundleLabel(category, subCat.genre || 'mixed');
+        trace.ebay_fallback = true;
+        return acceptWith(trace, EBAY_BUNDLE_OFFER_CENTS, assignedTier?.tier || 'T4', true);
+      }
+    }
+
     return rejectWith(trace, 8, 'No margin after fees');
   }
 

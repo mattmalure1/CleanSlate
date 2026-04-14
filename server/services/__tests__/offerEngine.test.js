@@ -501,14 +501,28 @@ describe('Step 7/8: Fees + net resale', () => {
     }
   });
 
-  test('rejects when fees exceed working price', () => {
+  test('rejects when fees exceed working price AND price too low for eBay bundle', () => {
+    // $1.50 is below the $2.00 eBay bundle threshold, so it's a genuine reject
     const r = run(makeExtracted({
-      current_used_buybox_cents: 250,
-      avg_90_day_used_buybox_cents: 250,
+      current_used_buybox_cents: 150,
+      avg_90_day_used_buybox_cents: 150,
     }));
-    // 250 - (37 referral + 180 close + 306 fba + 145 prep + ...) = negative
-    assert.equal(r.rejection_reason, 'No margin after fees');
-    assert.equal(r.calculation_trace.rejection_step, 8);
+    assert.equal(r.accepted, false);
+    assert.equal(r.calculation_trace.rejection_step, 5); // hits category min price first ($2.00 for books)
+  });
+
+  test('eBay bundle fallback: fees exceed price but working price >= $2.00 → penny $0.05', () => {
+    const r = run(makeExtracted({
+      current_used_buybox_cents: 500,
+      avg_90_day_used_buybox_cents: 500,
+    }));
+    // $5.00 book: Amazon fees eat the margin, but eBay bundle is viable
+    if (r.calculation_trace.ebay_fallback) {
+      assert.equal(r.accepted, true);
+      assert.equal(r.offer_cents, 5);
+      assert.equal(r.is_penny_tier, true);
+      assert.equal(r.calculation_trace.disposition, 'ebay_bundle');
+    }
   });
 
   test('referral fee is 15% of working price', () => {
@@ -907,53 +921,43 @@ describe('lookupFBAFee', () => {
 // Penny tier (V2)
 // ============================================================
 describe('V2: Penny tier', () => {
-  test('item with net_resale >= 50 but failing standard ROI → penny tier $0.10', () => {
-    // Low working price where standard math produces < $0.25 offer
-    // but net_resale is still above $0.50 → penny tier kicks in
+  test('$5 book: Amazon math underwater → eBay bundle fallback at $0.05', () => {
     const r = run(makeExtracted({
       current_used_buybox_cents: 500,
       avg_90_day_used_buybox_cents: 500,
       sales_rank_drops_90: 35,
       current_bsr: 250000,
     }));
-    // At $5 working price with fees ~$7-9, this likely rejects standard but
-    // if net_resale >= 50, penny tier activates.
-    // Let's check: the engine may accept or penny depending on exact fee math
-    if (r.calculation_trace.penny_tier_applied) {
-      assert.equal(r.accepted, true);
-      assert.equal(r.offer_cents, 10);
-      assert.equal(r.is_penny_tier, true);
-    }
+    // $5 book: Amazon fees eat the margin, but $5 >= $2 eBay bundle threshold
+    assert.equal(r.accepted, true);
+    assert.equal(r.is_penny_tier, true);
+    assert.equal(r.offer_cents, 5);
+    assert.equal(r.calculation_trace.ebay_fallback, true);
+    assert.equal(r.calculation_trace.disposition, 'ebay_bundle');
   });
 
-  test('penny tier: net_resale just above 50 cents → $0.10 offer', () => {
-    // Craft a scenario where fees eat most of the price but leave $0.50+ net
-    // Working price $8, typical book fees ~$7.30 → net_resale ~$0.70
+  test('$8 book: may hit Amazon penny or eBay fallback depending on fees', () => {
     const r = run(makeExtracted({
       current_used_buybox_cents: 800,
       avg_90_day_used_buybox_cents: 800,
       sales_rank_drops_90: 35,
       current_bsr: 250000,
     }));
-    if (r.calculation_trace.penny_tier_applied) {
-      assert.equal(r.accepted, true);
-      assert.equal(r.offer_cents, 10);
-      assert.equal(r.is_penny_tier, true);
-      assert.ok(r.calculation_trace.penny_net_profit_cents >= 50,
-        `penny profit ${r.calculation_trace.penny_net_profit_cents} should be >= 50`);
-    }
+    // Either way it should accept as penny tier
+    assert.equal(r.accepted, true);
+    assert.equal(r.is_penny_tier, true);
   });
 
-  test('penny tier does NOT activate when net_resale < 50', () => {
-    // Very low working price → fees exceed price → net_resale negative → reject
+  test('$1.50 book: below category min price → rejects at Step 5', () => {
     const r = run(makeExtracted({
-      current_used_buybox_cents: 250,
-      avg_90_day_used_buybox_cents: 250,
+      current_used_buybox_cents: 150,
+      avg_90_day_used_buybox_cents: 150,
       sales_rank_drops_90: 35,
       current_bsr: 250000,
     }));
     assert.equal(r.accepted, false);
-    assert.equal(r.calculation_trace.rejection_step, 8); // "No margin after fees"
+    // Hits category minimum ($2.00 for books) before reaching fees
+    assert.equal(r.calculation_trace.rejection_step, 5);
   });
 
   test('is_penny_tier is false for standard accepted offers', () => {
