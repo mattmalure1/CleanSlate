@@ -98,20 +98,16 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         );
         const cameraId = backCam ? backCam.id : devices[devices.length - 1].id;
 
-        // Scan region uses a percentage of the video feed — much wider than
-        // the old fixed 500×200px box. This lets barcodes be read from further
-        // away because more of the camera frame is analyzed. fps bumped from
-        // 15 → 20 for faster detection cycles.
-        const qrboxFunction = (viewfinderWidth, viewfinderHeight) => ({
-          width: Math.floor(viewfinderWidth * 0.85),
-          height: Math.floor(viewfinderHeight * 0.40),
-        });
-
+        // No qrbox — scan the FULL camera frame. This gives html5-qrcode
+        // the entire 1920x1080 feed to analyze, producing the best possible
+        // barcode detection at any distance. A restricted qrbox crops the
+        // frame and requires the barcode to be centered inside a small box,
+        // which is why it only worked close-up.
         await scanner.start(
           { deviceId: { exact: cameraId } },
           {
-            fps: 20,
-            qrbox: qrboxFunction,
+            fps: 25,
+            // No qrbox = full-frame scanning
             videoConstraints: {
               deviceId: { exact: cameraId },
               width: { ideal: 1920 },
@@ -204,7 +200,7 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         ) : <div className="w-[44px]" />}
       </div>
 
-      {/* Camera */}
+      {/* Camera — ALWAYS full remaining height. Results overlay on top, never push it smaller. */}
       <div className="relative flex-1 overflow-hidden bg-black">
         <div id="scanner-region" className="w-full h-full" />
 
@@ -215,72 +211,54 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
           </div>
         )}
 
-        {/* Barcode-shaped scan guide overlay */}
-        {ready && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-            <div className="relative">
-              {/* Barcode lines illustration */}
-              <div className="flex items-end gap-[2px] opacity-30">
-                {[20,28,14,24,18,30,12,26,16,28,22,14,30,18,24,12,28,20,26,14,22,30,16,28,18,24,20,12,26,22].map((h, i) => (
-                  <div key={i} className="w-[3px] bg-white rounded-sm" style={{ height: h }} />
-                ))}
-              </div>
-              {/* Scan line animation */}
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-brand-400 animate-pulse" />
-            </div>
-          </div>
-        )}
-
-        {/* Non-blocking lookup indicator — scanner keeps running */}
+        {/* Non-blocking lookup indicator */}
         {pendingLookups.size > 0 && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
             <Loader2 size={14} className="animate-spin" />
             Looking up {pendingLookups.size === 1 ? [...pendingLookups][0] : `${pendingLookups.size} items`}...
           </div>
         )}
-      </div>
 
-      {/* Results list (bottom overlay) */}
-      {items.length > 0 && (
-        <div className="bg-black/95 max-h-[35vh] overflow-y-auto border-t border-white/10">
-          {items.map((item, i) => {
-            const ok = item.status === 'accepted' || item.status === 'low';
-            return (
-              <div key={`${item.code}-${i}`} className="flex items-center gap-3 px-4 py-2.5 border-b border-white/5">
-                {item.imageUrl ? (
-                  <img src={item.imageUrl} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />
-                ) : (
-                  <div className={`w-10 h-10 rounded flex items-center justify-center flex-shrink-0 ${ok ? 'bg-brand-900' : 'bg-red-900/50'}`}>
-                    {ok ? <Check size={16} className="text-brand-400" /> : <X size={16} className="text-red-400" />}
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-white text-sm truncate">{item.title || item.code}</p>
-                  {item.category && <p className="text-white/40 text-xs capitalize">{item.category}</p>}
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  {ok ? (
-                    <span className="text-brand-400 font-bold text-sm">{item.offerDisplay} <Check size={12} className="inline" /></span>
+        {/* Results overlay — floats OVER the camera at the bottom, never shrinks the viewfinder */}
+        {items.length > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 z-20 bg-black/90 max-h-[30vh] overflow-y-auto border-t border-white/10">
+            {items.map((item, i) => {
+              const ok = item.status === 'accepted' || item.status === 'low';
+              return (
+                <div key={`${item.code}-${i}`} className="flex items-center gap-3 px-4 py-2 border-b border-white/5">
+                  {item.imageUrl ? (
+                    <img src={item.imageUrl} alt="" className="w-9 h-9 rounded object-cover flex-shrink-0" />
                   ) : (
-                    <span className="text-red-400 text-xs font-semibold">Pass</span>
+                    <div className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${ok ? 'bg-brand-900' : 'bg-red-900/50'}`}>
+                      {ok ? <Check size={14} className="text-brand-400" /> : <X size={14} className="text-red-400" />}
+                    </div>
                   )}
-                  <button onClick={() => removeItem(item.id)} className="text-white/30 hover:text-red-400 min-w-[32px] min-h-[32px] flex items-center justify-center cursor-pointer">
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-xs truncate">{item.title || item.code}</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {ok ? (
+                      <span className="text-brand-400 font-bold text-xs">{item.offerDisplay}</span>
+                    ) : (
+                      <span className="text-red-400 text-xs">Pass</span>
+                    )}
+                    <button onClick={() => removeItem(item.id)} className="text-white/30 hover:text-red-400 p-1 cursor-pointer">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
 
-      {/* Bottom instruction */}
-      {items.length === 0 && !error && (
-        <div className="bg-black/90 text-center py-4 px-6">
-          <p className="text-white text-sm font-medium">Point camera at any barcode</p>
-          <p className="text-white/40 text-xs mt-1">ISBN, UPC, or EAN — any orientation</p>
-        </div>
-      )}
+        {/* Bottom instruction — only when no items scanned yet */}
+        {items.length === 0 && !error && ready && (
+          <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/70 text-center py-3 px-6">
+            <p className="text-white text-sm font-medium">Point camera at any barcode</p>
+            <p className="text-white/40 text-xs mt-0.5">ISBN, UPC, or EAN — any orientation</p>
+          </div>
+        )}
 
       {error && (
         <div className="bg-black/90 text-center py-4 px-6">
