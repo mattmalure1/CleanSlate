@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { apiUrl } from '../api';
+import { apiUrl, adminFetch } from '../api';
 import {
   Package, Search, RefreshCw, Download, CheckSquare, Square,
   ChevronDown, ExternalLink, AlertTriangle, Timer, BarChart3,
@@ -75,7 +75,7 @@ export default function AdminInventoryPage() {
       if (filter !== 'all') params.set('status', filter);
       if (categoryFilter !== 'all') params.set('category', categoryFilter);
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
-      const res = await fetch(apiUrl(`/api/admin/inventory?${params}`));
+      const res = await adminFetch(`/api/admin/inventory?${params}`);
       const data = await res.json();
       setItems(data.items || []);
       setStats(data.stats || {});
@@ -88,9 +88,8 @@ export default function AdminInventoryPage() {
   async function updateStatus(itemId, newStatus) {
     setUpdatingId(itemId);
     try {
-      await fetch(apiUrl(`/api/admin/inventory/${itemId}`), {
+      await adminFetch(`/api/admin/inventory/${itemId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
       fetchItems();
@@ -102,9 +101,8 @@ export default function AdminInventoryPage() {
     if (selectedIds.size === 0) return;
     setUpdatingId('batch');
     try {
-      await fetch(apiUrl('/api/admin/inventory/batch'), {
+      await adminFetch('/api/admin/inventory/batch', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           itemIds: [...selectedIds],
           status: newStatus,

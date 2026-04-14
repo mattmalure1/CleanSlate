@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { apiUrl } from '../api';
+import { adminFetch } from '../api';
 
 export function useDebugQuote() {
   const [loading, setLoading] = useState(false);
@@ -13,10 +13,8 @@ export function useDebugQuote() {
     try {
       const cleanCode = code.replace(/[^a-zA-Z0-9]/g, '');
       if (!cleanCode) throw new Error('Enter a UPC or ASIN');
-      const url = apiUrl(
-        `/api/admin/debug-quote?code=${encodeURIComponent(cleanCode)}${forceRefresh ? '&forceRefresh=true' : ''}`,
-      );
-      const res = await fetch(url);
+      const path = `/api/admin/debug-quote?code=${encodeURIComponent(cleanCode)}${forceRefresh ? '&forceRefresh=true' : ''}`;
+      const res = await adminFetch(path);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`);
       setData(json);

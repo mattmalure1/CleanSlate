@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { apiUrl } from '../api';
+import { apiUrl, adminFetch } from '../api';
 import {
   Package, Truck, ClipboardCheck, DollarSign, Clock, Search,
   ChevronDown, ExternalLink, Mail, MapPin, RefreshCw, Database,
@@ -58,7 +58,7 @@ export default function AdminOrdersPage() {
       const params = new URLSearchParams();
       if (filter !== 'all') params.set('status', filter);
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
-      const res = await fetch(apiUrl(`/api/admin/orders?${params}`));
+      const res = await adminFetch(`/api/admin/orders?${params}`);
       const data = await res.json();
       setOrders(data.orders || []);
       setStats(data.stats || {});
@@ -71,9 +71,8 @@ export default function AdminOrdersPage() {
   async function updateStatus(orderId, newStatus) {
     setUpdatingId(orderId);
     try {
-      await fetch(apiUrl(`/api/admin/order/${orderId}`), {
+      await adminFetch(`/api/admin/order/${orderId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       });
       fetchOrders();
@@ -85,9 +84,8 @@ export default function AdminOrdersPage() {
     if (selectedIds.size === 0) return;
     setUpdatingId('batch');
     try {
-      await fetch(apiUrl('/api/admin/orders/batch'), {
+      await adminFetch('/api/admin/orders/batch', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           orderIds: [...selectedIds],
           status: newStatus,

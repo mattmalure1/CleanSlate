@@ -22,6 +22,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import AccountPage from './pages/AccountPage';
+import AdminRoute from './components/AdminRoute';
 
 export default function App() {
   return (
@@ -36,12 +37,12 @@ export default function App() {
               <Route path="/checkout" element={<CheckoutPage />} />
               <Route path="/confirmation/:orderId" element={<ConfirmationPage />} />
               <Route path="/bulk" element={<BulkPage />} />
-              <Route path="/admin" element={<AdminPage />} />
-              <Route path="/admin/orders" element={<AdminOrdersPage />} />
-              <Route path="/admin/inventory" element={<AdminInventoryPage />} />
-              <Route path="/admin/quotes" element={<AdminQuotesPage />} />
-              <Route path="/admin/debug-quote" element={<AdminDebugQuotePage />} />
-              <Route path="/admin/gated-items" element={<AdminGatedItemsPage />} />
+              <Route path="/admin" element={<AdminRoute><AdminPage /></AdminRoute>} />
+              <Route path="/admin/orders" element={<AdminRoute><AdminOrdersPage /></AdminRoute>} />
+              <Route path="/admin/inventory" element={<AdminRoute><AdminInventoryPage /></AdminRoute>} />
+              <Route path="/admin/quotes" element={<AdminRoute><AdminQuotesPage /></AdminRoute>} />
+              <Route path="/admin/debug-quote" element={<AdminRoute><AdminDebugQuotePage /></AdminRoute>} />
+              <Route path="/admin/gated-items" element={<AdminRoute><AdminGatedItemsPage /></AdminRoute>} />
               <Route path="/track" element={<TrackPage />} />
               <Route path="/privacy" element={<PrivacyPage />} />
               <Route path="/terms" element={<TermsPage />} />

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { apiUrl } from '../api';
+import { apiUrl, adminFetch } from '../api';
 import {
   Package, Search, RefreshCw, Database, ClipboardCheck, Archive,
   BarChart3, DollarSign, Clock, Calendar, CheckCircle, Tag,
@@ -71,7 +71,7 @@ export default function AdminQuotesPage() {
       if (searchQuery.trim()) params.set('search', searchQuery.trim());
       if (categoryFilter !== 'all') params.set('category', categoryFilter);
       if (statusFilter !== 'all') params.set('status', statusFilter);
-      const res = await fetch(apiUrl(`/api/admin/quotes?${params}`));
+      const res = await adminFetch(`/api/admin/quotes?${params}`);
       const data = await res.json();
       setQuotes(data.quotes || []);
       setStats(data.stats || {});

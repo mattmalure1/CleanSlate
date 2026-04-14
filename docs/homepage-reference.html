@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "tertiary": "#293d39",
+                    "on-secondary-fixed": "#07200b",
+                    "primary-container": "#2d5a27",
+                    "on-primary-fixed": "#002201",
+                    "surface-container-high": "#daebf5",
+                    "surface-container": "#e0f0fb",
+                    "surface-bright": "#f4faff",
+                    "surface-tint": "#3b6934",
+                    "primary": "#154212",
+                    "surface-container-highest": "#d5e5ef",
+                    "secondary-fixed": "#ccebc7",
+                    "on-primary-fixed-variant": "#23501e",
+                    "primary-fixed-dim": "#a1d494",
+                    "surface": "#f4faff",
+                    "on-error": "#ffffff",
+                    "on-primary": "#ffffff",
+                    "secondary": "#4a6549",
+                    "on-tertiary-fixed": "#0a1f1c",
+                    "on-primary-container": "#9dd090",
+                    "inverse-surface": "#23323a",
+                    "outline-variant": "#c2c9bb",
+                    "tertiary-container": "#405450",
+                    "surface-container-lowest": "#ffffff",
+                    "on-secondary": "#ffffff",
+                    "tertiary-fixed": "#d0e7e1",
+                    "on-background": "#0e1d25",
+                    "on-error-container": "#93000a",
+                    "surface-variant": "#d5e5ef",
+                    "on-secondary-fixed-variant": "#334d33",
+                    "secondary-container": "#ccebc7",
+                    "inverse-on-surface": "#e3f3fd",
+                    "outline": "#72796e",
+                    "primary-fixed": "#bcf0ae",
+                    "on-tertiary-fixed-variant": "#364b47",
+                    "secondary-fixed-dim": "#b0cfad",
+                    "tertiary-fixed-dim": "#b5cbc6",
+                    "background": "#f4faff",
+                    "on-surface-variant": "#42493e",
+                    "inverse-primary": "#a1d494",
+                    "on-tertiary": "#ffffff",
+                    "surface-container-low": "#e7f6ff",
+                    "on-tertiary-container": "#b1c7c2",
+                    "error": "#ba1a1a",
+                    "on-secondary-container": "#506b4f",
+                    "error-container": "#ffdad6",
+                    "on-surface": "#0e1d25",
+                    "surface-dim": "#ccdce7"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "fontFamily": {
+                    "headline": ["Manrope"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .editorial-shadow {
+            box-shadow: 0px 24px 48px rgba(14, 29, 37, 0.06);
+        }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-background antialiased overflow-x-hidden">
+<!-- TopNavBar -->
+<header class="fixed top-0 w-full z-50 bg-stone-50/80 backdrop-blur-md">
+<nav class="flex justify-between items-center max-w-7xl mx-auto px-8 h-20">
+<div class="text-2xl font-bold tracking-tighter text-emerald-900">CleanSlate</div>
+<div class="hidden md:flex items-center gap-8 Manrope display text-sm font-semibold tracking-tight">
+<a class="text-emerald-900 font-bold border-b-2 border-emerald-900 pb-1" href="#">How it Works</a>
+<a class="text-stone-600 hover:text-emerald-800 transition-all duration-300" href="#">What We Buy</a>
+<a class="text-stone-600 hover:text-emerald-800 transition-all duration-300" href="#">Why Us</a>
+<a class="text-stone-600 hover:text-emerald-800 transition-all duration-300" href="#">FAQ</a>
+</div>
+<div class="flex items-center gap-4">
+<button class="px-5 py-2 text-sm font-semibold text-emerald-900 transition-all duration-300 hover:opacity-80">Login</button>
+<button class="px-6 py-2.5 bg-primary text-on-primary rounded-xl font-semibold shadow-sm hover:scale-95 transition-all duration-300">Get Started</button>
+</div>
+</nav>
+</header>
+<main class="pt-20">
+<!-- Hero Section -->
+<section class="relative min-h-[870px] flex items-center overflow-hidden bg-surface">
+<div class="max-w-7xl mx-auto px-8 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center relative z-10">
+<div class="space-y-8">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary-container text-on-secondary-container text-xs font-bold tracking-wider uppercase">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">eco</span>
+                        Conscious Circulation
+                    </div>
+<h1 class="font-headline text-5xl lg:text-7xl font-extrabold text-primary leading-[1.1] tracking-tight">
+                        Sell Your Used Media for Cash &amp; Help the Planet
+                    </h1>
+<p class="text-lg text-on-surface-variant max-w-lg leading-relaxed">
+                        Transform your clutter into currency. We offer premium payouts for books, CDs, and games with free carbon-neutral shipping on every order.
+                    </p>
+<!-- Search Bar / Quote Tool -->
+<div class="editorial-shadow bg-surface-container-lowest p-2 rounded-xl flex flex-col md:flex-row gap-2 max-w-xl">
+<div class="flex-1 relative flex items-center px-4">
+<span class="material-symbols-outlined text-outline absolute left-4">barcode_scanner</span>
+<input class="w-full py-4 pl-10 border-none bg-transparent focus:ring-0 text-on-surface font-medium placeholder:text-outline" placeholder="Enter ISBN, UPC, or Title..." type="text"/>
+</div>
+<button class="bg-primary text-on-primary px-8 py-4 rounded-xl font-bold tracking-tight hover:scale-[0.98] transition-all duration-300">
+                            Get Quote
+                        </button>
+</div>
+<div class="flex flex-wrap gap-6 items-center pt-4">
+<div class="flex -space-x-3">
+<div class="w-10 h-10 rounded-full border-2 border-surface bg-slate-200 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Portrait of a smiling customer with warm natural lighting and soft background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD2S3sb9kKqSdImTjzlJjKBrFU4htggofzDngwkfePMx2fvyL0PAmxeVNgsSx53GDh4LzLfnLeyTFwMoQ4LsnmCFGiLeHpGSdkh9kkIxpiVatGUFueW6DsiG4mlmW7Csi_LaPg-1k3PKtYYk2lrU_b1EWu8y5mXi8fEg_YX2K4VSOi_j7h3DMLdZ9oCESmT3Wj_QFtIgKUJxBTx-PbeRN-8-Uxc4gGlXf750iPrQ9BkCKUzCJVSltZE2kmz1LaHUh8mOoFA96qzNGM"/>
+</div>
+<div class="w-10 h-10 rounded-full border-2 border-surface bg-slate-200 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Close-up of a diverse middle-aged man smiling confidently" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCV3GSxHstt2VHU2BROMS3QdikHle42Fk73eam1tiEE8Cl4-exqi9KSaxOqXfOowAix8jowABh-oO-0BVyBhXgwHHqueCJAj2NwVDADWwztotzoqKSceOMMvOFAX-A3FURVutnoB0TBlvtjLhDKhUHyXjRREPnKTLZ528qtrAwoQnigclQJ0fqWVDbOH03RgAK6fFuMtFY3KigTAxI9grcUWjeUJNue_0acrovjAnxPIdxvzf2ailCFklvQfAq4Pu0AFdomGWb1HLY"/>
+</div>
+<div class="w-10 h-10 rounded-full border-2 border-surface bg-slate-200 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="Portrait of a young professional person in soft window light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC30gMrBeys8YwKZ1tPyfI2rOEXAlCH266gnF3_D7RPfIu9HsYvK2fsf0GZvD6YZPM2nfdDrTlgnUrEVIUJxIHqeu8c34FhXiXym5hdZFCUIQ9TrT0Q74UleKOKyUxFdFrOYdGwr-H-Wh1-2qyrc18uz52RB9v87qQ5VFYLHM2kOwUf6mxjN99YDKq6aMVOjhp-9CMy8egQhAELeJ-_i69mqm2ObvZLygeHXv7IrPORzut90Q7_wURVdW4HKuo0d54jem6WJpyLN-A"/>
+</div>
+</div>
+<p class="text-sm text-on-surface-variant font-medium">Join 10,000+ conscious sellers</p>
+</div>
+</div>
+<div class="relative hidden lg:block">
+<div class="absolute -top-12 -right-12 w-64 h-64 bg-secondary-fixed rounded-full opacity-30 blur-3xl"></div>
+<div class="relative z-10 rounded-[2rem] overflow-hidden editorial-shadow transform rotate-1">
+<img class="w-full aspect-[4/5] object-cover" data-alt="A person holding a mobile phone and scanning a barcode on a vintage hardcover book in a bright modern library setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuANy_KWX144IYLLKHNoK88i3ajy-6w6Zdf6OLxzpMVQ594GktsMZGhESTbjgkQb2rTbDQean4iKjjZcyk04pdjtQl6s1sdjoGoZwB9K6vopz_3p35hqUkEk_ktx9rsM1Ge43rTFNy1DHjHqfg-eogCYXzUDQIFlwYoeDka4nm6NxZYT4vFP_7szxFsmrahj1yt6qn4yIx7ipjKzcLPSY18nIaDl0kKszGOa9UWiYPKl84yatApQ-DVM4bE4c67MqJ93dRPCpnx2I_k"/>
+</div>
+<!-- Eco Stat Card -->
+<div class="absolute -bottom-8 -left-8 bg-secondary-fixed p-8 rounded-full editorial-shadow z-20 max-w-[200px]">
+<span class="font-headline text-4xl font-extrabold text-on-secondary-fixed-variant block">42k</span>
+<span class="text-sm font-semibold text-on-secondary-fixed-variant uppercase tracking-widest leading-tight">Liters of water saved this month</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Trust Bar -->
+<section class="bg-tertiary py-12">
+<div class="max-w-7xl mx-auto px-8">
+<div class="flex flex-wrap justify-center md:justify-between items-center gap-8">
+<div class="flex items-center gap-3 text-on-tertiary">
+<div class="p-2 bg-on-tertiary/10 rounded-lg">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">payments</span>
+</div>
+<span class="font-semibold tracking-tight">Instant Payment</span>
+</div>
+<div class="flex items-center gap-3 text-on-tertiary">
+<div class="p-2 bg-on-tertiary/10 rounded-lg">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">local_shipping</span>
+</div>
+<span class="font-semibold tracking-tight">Free UPS Shipping</span>
+</div>
+<div class="flex items-center gap-3 text-on-tertiary">
+<div class="p-2 bg-on-tertiary/10 rounded-lg">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">verified</span>
+</div>
+<span class="font-semibold tracking-tight">No Hidden Fees</span>
+</div>
+<div class="flex items-center gap-3 text-on-tertiary">
+<div class="p-2 bg-on-tertiary/10 rounded-lg">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">eco</span>
+</div>
+<span class="font-semibold tracking-tight">Eco-Certified Buyback</span>
+</div>
+</div>
+</div>
+</section>
+<!-- What We Buy (Bento Grid Style) -->
+<section class="py-24 bg-surface">
+<div class="max-w-7xl mx-auto px-8">
+<div class="mb-16">
+<h2 class="font-headline text-4xl font-extrabold text-primary tracking-tight mb-4">What We Buy</h2>
+<p class="text-on-surface-variant max-w-xl text-lg">We specialize in high-quality media across four primary categories. Get an instant quote for any item with an ISBN or UPC.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-6 h-auto md:h-[600px]">
+<div class="md:col-span-8 group relative overflow-hidden rounded-[2rem] editorial-shadow cursor-pointer">
+<img class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A large collection of colorful hardcover books stacked neatly in an aesthetic home office setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBvc50M-1ekmm_fCp4tzmArHBMikCNkRIVEwObxM-NqBUewTjUtzlsexQUn5EdliH7J3-LiVYtA3Jx1D1Co_r_UBpb_WcKUFx3UQKh5XyUDDkvc79NMQjXFtNx8uGNX_2DC0x5hSpVx8213r4GtNas93p2YJSGuaktYu85Uv0arEHJmB1P9EsUQrAVnmHQPgQ727IdM8tkYa_USj0dOZf9AiZNxWd4EEwyzM0f1ld5x8U5PkQc2DOYnqTo5BqZJutMYUVA7gjOhlIE"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/80 via-transparent to-transparent"></div>
+<div class="absolute bottom-8 left-8">
+<h3 class="text-3xl font-headline font-bold text-on-primary mb-2">Books</h3>
+<p class="text-on-primary/80">Textbooks, Hardcovers, and Rare Finds</p>
+</div>
+</div>
+<div class="md:col-span-4 grid grid-rows-2 gap-6">
+<div class="group relative overflow-hidden rounded-[2rem] editorial-shadow cursor-pointer">
+<img class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Close-up of a stack of DVD and Blu-ray cases showing vibrant cover art" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDdEF5CzN-o1wGBA4K_q8ZiS0J79sKN6iDUIjipiVLTNyg1m0io2yoDCKpefcJRXjRx72i1Vdwr-_6SaTM-kg6BMm0LLzLYLGZT3BZHsDPVWZzuCfRC5xoLBQZxvX7t7OxaiEHucfCpGUG_Ul8wiRcCSu7J_LCMWbsZME9ciXz7YHXPPWg1T46-MXp5Q73EvLM7SHlG2WYjFFu1R4MixO6BopDJvv7IzFOak2N_8fidXcGUiksZEpy7TEl_xPIxOWFz9lpfvXdtRkY"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/80 via-transparent to-transparent"></div>
+<div class="absolute bottom-6 left-6">
+<h3 class="text-2xl font-headline font-bold text-on-primary">DVDs &amp; Blu-ray</h3>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-[2rem] editorial-shadow cursor-pointer">
+<img class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A modern video game controller lying next to several video game disc boxes" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCh2oIoiuybbW7mX8YMCIzMNWixvEFnrapiX72Qoscj2gmj2-IzRuoG8VVTA8Uz-Ar1rm_Zu7wsV889EtKuSNuOpuFvG8Rhsie4QHvnZY84Z3TZPRdITwsYRnu8d0W7cWPCGQ3CtHb46gwWgKrmCBzvRrKlH5GD0WyZq_lK2Aaggx_pdO-Xbwz4HiDbFWhu58oL0kedWtZPO-kbgRGTsgdMHEiTfozDFiwTLjsm0yOEm7JpKgM6njVc5-zaYXnvTxVEVRlrSupQKQw"/>
+<div class="absolute inset-0 bg-gradient-to-t from-primary/80 via-transparent to-transparent"></div>
+<div class="absolute bottom-6 left-6">
+<h3 class="text-2xl font-headline font-bold text-on-primary">Video Games</h3>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Why Sell to Us? (Asymmetrical Editorial Layout) -->
+<section class="py-24 bg-surface-container-low">
+<div class="max-w-7xl mx-auto px-8 grid grid-cols-1 lg:grid-cols-2 gap-20 items-center">
+<div class="relative">
+<div class="bg-surface-container-lowest p-12 rounded-[3rem] editorial-shadow space-y-12 relative z-10">
+<div class="flex gap-6 items-start">
+<div class="w-12 h-12 bg-secondary-container rounded-full flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary">potted_plant</span>
+</div>
+<div>
+<h4 class="text-xl font-headline font-bold text-primary mb-2">Eco-Conscious Loop</h4>
+<p class="text-on-surface-variant leading-relaxed">Unlike traditional buyback sites, every item we process is carbon-offset. We plant a tree for every $50 worth of media sold.</p>
+</div>
+</div>
+<div class="flex gap-6 items-start">
+<div class="w-12 h-12 bg-secondary-container rounded-full flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary">speed</span>
+</div>
+<div>
+<h4 class="text-xl font-headline font-bold text-primary mb-2">The Speed of Direct</h4>
+<p class="text-on-surface-variant leading-relaxed">Quotes are generated instantly. Once your box arrives, we process payment via PayPal or Direct Deposit within 24 hours.</p>
+</div>
+</div>
+<div class="flex gap-6 items-start">
+<div class="w-12 h-12 bg-secondary-container rounded-full flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary">military_tech</span>
+</div>
+<div>
+<h4 class="text-xl font-headline font-bold text-primary mb-2">U.S. Based &amp; Trusted</h4>
+<p class="text-on-surface-variant leading-relaxed">Our support team is based in the Pacific Northwest. No chatbots, just real people helping you clear your shelves.</p>
+</div>
+</div>
+</div>
+<div class="absolute -top-10 -left-10 w-40 h-40 bg-primary opacity-5 rounded-full blur-2xl"></div>
+</div>
+<div class="space-y-8">
+<span class="font-headline font-extrabold text-7xl text-primary/10 select-none">REASON 01</span>
+<h2 class="font-headline text-5xl font-extrabold text-primary leading-tight">Better For Your Wallet, <br/>Better For The Earth.</h2>
+<p class="text-lg text-on-surface-variant leading-relaxed italic">
+                        "We started CleanSlate with a simple realization: the media buyback industry was cluttered and wasteful. We built a platform that treats your used media like a resource, not a commodity."
+                    </p>
+<div class="flex items-center gap-4">
+<div class="h-px w-12 bg-primary"></div>
+<span class="font-headline font-bold text-primary">Elena Vance, Founder</span>
+</div>
+</div>
+</div>
+</section>
+<!-- How It Works (Step Visuals) -->
+<section class="py-24 bg-surface">
+<div class="max-w-7xl mx-auto px-8">
+<div class="text-center mb-20">
+<h2 class="font-headline text-4xl font-extrabold text-primary tracking-tight">Three Simple Steps</h2>
+<p class="text-on-surface-variant mt-4">The easiest way to clear your shelves and get paid.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-16 relative">
+<!-- Connector line for desktop -->
+<div class="hidden md:block absolute top-24 left-0 w-full h-px bg-outline-variant/30 z-0"></div>
+<div class="relative z-10 flex flex-col items-center text-center group">
+<div class="w-20 h-20 rounded-full bg-surface-container-lowest border border-outline-variant/20 editorial-shadow flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-primary">barcode_reader</span>
+</div>
+<h3 class="font-headline font-bold text-xl text-primary mb-4">1. Get Quote</h3>
+<p class="text-on-surface-variant px-4">Enter your ISBNs or UPCs into our instant quote tool for immediate pricing.</p>
+</div>
+<div class="relative z-10 flex flex-col items-center text-center group">
+<div class="w-20 h-20 rounded-full bg-surface-container-lowest border border-outline-variant/20 editorial-shadow flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-primary">package_2</span>
+</div>
+<h3 class="font-headline font-bold text-xl text-primary mb-4">2. Ship for Free</h3>
+<p class="text-on-surface-variant px-4">Print your prepaid UPS label and drop your items off at any UPS location.</p>
+</div>
+<div class="relative z-10 flex flex-col items-center text-center group">
+<div class="w-20 h-20 rounded-full bg-surface-container-lowest border border-outline-variant/20 editorial-shadow flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-300">
+<span class="material-symbols-outlined text-3xl text-primary">account_balance_wallet</span>
+</div>
+<h3 class="font-headline font-bold text-xl text-primary mb-4">3. Get Paid</h3>
+<p class="text-on-surface-variant px-4">Receive your payment via PayPal or Direct Deposit within 24 hours of arrival.</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Social Proof / Testimonials -->
+<section class="py-24 bg-surface-container">
+<div class="max-w-7xl mx-auto px-8">
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-16 items-end">
+<div class="lg:col-span-4 space-y-6">
+<h2 class="font-headline text-4xl font-extrabold text-primary leading-tight tracking-tight">Loved by 10,000+ Sellers</h2>
+<div class="flex items-center gap-1 text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="ml-2 font-bold text-primary">4.9 / 5.0</span>
+</div>
+<p class="text-on-surface-variant">Real stories from our community of book lovers and media collectors.</p>
+</div>
+<div class="lg:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="bg-surface-container-lowest p-8 rounded-[2rem] editorial-shadow">
+<p class="text-on-surface-variant italic mb-6">"I had boxes of old textbooks taking up space. CleanSlate gave me the best quote by far, and the free shipping made it effortless. Plus, I love the trees they plant!"</p>
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full overflow-hidden bg-emerald-100">
+<img class="w-full h-full object-cover" data-alt="Portrait of a young woman smiling outdoors with soft sunlight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB64Ajz-igEMa-NryVg6S7nOCWroJxFXHLvCTfSdvU3YKRNGKNLKPr6jTF4HlimBFuMLJrXKrN0COAzluFXu_s7IRYuVwjrMFaLqEFyvkdtc-yNNrPjHIwQ-7NjF-14wsqGUEY_9rinCpBEbb5VAmPHVsAqzu-3kL9oikUur23x5cpD-MTMg83moXXWxse0V5FAYBs_l7W3a4PCNE1_HtOlFvVOXZqODgiSxvJ_Jj3e91XvI97zVUgwVsk9eG07bgsvIBBHHbwcJg4"/>
+</div>
+<div>
+<p class="font-bold text-primary">Sarah J.</p>
+<p class="text-sm text-outline">Portland, OR</p>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-8 rounded-[2rem] editorial-shadow">
+<p class="text-on-surface-variant italic mb-6">"Fastest payment I've ever received from a buyback site. Scanned my games on Monday, got paid by Friday. Highly recommend for anyone clearing house."</p>
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full overflow-hidden bg-emerald-100">
+<img class="w-full h-full object-cover" data-alt="Profile photo of a smiling man with a beard in a casual setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAF2ro81ZIl1NVtDCkj_UG_rLzNZWUs6brd-e3cEYeFZhdOGEQtitH0YIRKI--hswgdCpYgNbiAQQPGbIOtH2viHz6kvcKotcCkVr4PY-B3ULB74VIFKosOZjV9bKAOYHLGBSKoc3RcyCNuxpSWGGII0v6SpM47fITGS-8isPhJHdh0MpGOIO7EgCEeiTAzNLY1gMBs583YmqTdWfbpQlnU_bgAthEvOBlV2iQOQ7eGNeLlopOAoKT4gbbrnuEYyIbMYtEmg-7h_po"/>
+</div>
+<div>
+<p class="font-bold text-primary">Michael R.</p>
+<p class="text-sm text-outline">Austin, TX</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- FAQ Section -->
+<section class="py-24 bg-surface">
+<div class="max-w-3xl mx-auto px-8">
+<div class="text-center mb-16">
+<h2 class="font-headline text-4xl font-extrabold text-primary">Common Questions</h2>
+</div>
+<div class="space-y-4">
+<div class="bg-surface-container-low rounded-2xl p-6 hover:bg-surface-container-high transition-colors cursor-pointer group">
+<div class="flex justify-between items-center">
+<h4 class="font-bold text-primary">What is an ISBN?</h4>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors">expand_more</span>
+</div>
+<p class="mt-4 text-on-surface-variant text-sm leading-relaxed">An ISBN is a 10 or 13-digit code usually found on the back of a book near the barcode. It uniquely identifies the edition of your book so we can give you an accurate price.</p>
+</div>
+<div class="bg-surface-container-low rounded-2xl p-6 hover:bg-surface-container-high transition-colors cursor-pointer group">
+<div class="flex justify-between items-center">
+<h4 class="font-bold text-primary">How do I get paid?</h4>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors">expand_more</span>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-2xl p-6 hover:bg-surface-container-high transition-colors cursor-pointer group">
+<div class="flex justify-between items-center">
+<h4 class="font-bold text-primary">Is shipping really free?</h4>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors">expand_more</span>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-2xl p-6 hover:bg-surface-container-high transition-colors cursor-pointer group">
+<div class="flex justify-between items-center">
+<h4 class="font-bold text-primary">What items are not accepted?</h4>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors">expand_more</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-emerald-950 text-emerald-50 py-20">
+<div class="max-w-7xl mx-auto px-8 grid grid-cols-1 md:grid-cols-2 gap-16">
+<div class="space-y-8">
+<div class="text-3xl font-black tracking-tighter">CleanSlate</div>
+<p class="max-w-sm text-emerald-100/70 Inter body-md leading-relaxed">
+                    © 2024 CleanSlate Media. Preserving the digital ecosystem through conscious circulation.
+                </p>
+<div class="flex gap-4">
+<div class="w-10 h-10 rounded-full border border-emerald-100/20 flex items-center justify-center hover:bg-on-tertiary/10 cursor-pointer transition-colors">
+<span class="material-symbols-outlined text-sm">public</span>
+</div>
+<div class="w-10 h-10 rounded-full border border-emerald-100/20 flex items-center justify-center hover:bg-on-tertiary/10 cursor-pointer transition-colors">
+<span class="material-symbols-outlined text-sm">share</span>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-8">
+<div class="space-y-4">
+<h5 class="font-bold text-emerald-50 uppercase tracking-widest text-xs">Platform</h5>
+<ul class="space-y-3 text-emerald-100/70">
+<li><a class="hover:text-white transition-colors" href="#">Bulk Selling</a></li>
+<li><a class="hover:text-white transition-colors" href="#">How it Works</a></li>
+<li><a class="hover:text-white transition-colors" href="#">Sustainability Report</a></li>
+</ul>
+</div>
+<div class="space-y-4">
+<h5 class="font-bold text-emerald-50 uppercase tracking-widest text-xs">Support</h5>
+<ul class="space-y-3 text-emerald-100/70">
+<li><a class="hover:text-white transition-colors" href="#">Contact Support</a></li>
+<li><a class="hover:text-white transition-colors" href="#">Terms of Service</a></li>
+<li><a class="hover:text-white transition-colors" href="#">Privacy Policy</a></li>
+</ul>
+</div>
+</div>
+</div>
+</footer>
+</body></html>

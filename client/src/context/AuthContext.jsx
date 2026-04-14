@@ -147,11 +147,14 @@ export function AuthProvider({ children }) {
     }
   }
 
+  const isAdmin = !!customer?.is_admin;
+
   const value = {
     user,
     session,
     customer,
     loading,
+    isAdmin,
     signUp,
     signIn,
     signOut,

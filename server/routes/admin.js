@@ -1,8 +1,12 @@
 const express = require('express');
 const router = express.Router();
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 const keepa = require('../services/keepa');
 const engine = require('../services/offerEngine');
 const tt = require('../services/tierThresholds');
+
+// All admin routes require authentication + admin flag
+router.use('/api/admin', requireAuth, requireAdmin);
 
 // Parse Keepa offers into SellerAmp-style competition data
 // Only includes currently active offers (seen in last 2 days)

@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../services/supabase');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
+
+// All inventory routes are admin-only
+router.use('/api/admin/inventory', requireAuth, requireAdmin);
 
 // POST /api/admin/inventory/receive — create inventory from order or manual items
 router.post('/api/admin/inventory/receive', async (req, res) => {

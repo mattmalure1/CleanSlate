@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../services/supabase');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // POST /api/order — create a new order (persists to Supabase)
 router.post('/api/order', async (req, res) => {
@@ -94,7 +95,7 @@ router.get('/api/order/:id', async (req, res) => {
 });
 
 // PATCH /api/admin/order/:id — update order status/notes (admin only)
-router.patch('/api/admin/order/:id', async (req, res) => {
+router.patch('/api/admin/order/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { status, notes } = req.body;
     const updates = {};
@@ -117,7 +118,7 @@ router.patch('/api/admin/order/:id', async (req, res) => {
 });
 
 // GET /api/admin/orders — list orders with search, filter, stats
-router.get('/api/admin/orders', async (req, res) => {
+router.get('/api/admin/orders', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { limit, status, search } = req.query;
     const orders = await db.listOrders({
@@ -162,7 +163,7 @@ router.get('/api/admin/orders', async (req, res) => {
 });
 
 // PATCH /api/admin/orders/batch — batch status update
-router.patch('/api/admin/orders/batch', async (req, res) => {
+router.patch('/api/admin/orders/batch', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { orderIds, status, payoutTransactionId } = req.body;
     if (!orderIds || !Array.isArray(orderIds) || !status) {
@@ -189,7 +190,7 @@ router.patch('/api/admin/orders/batch', async (req, res) => {
 });
 
 // GET /api/admin/orders/export — CSV export
-router.get('/api/admin/orders/export', async (req, res) => {
+router.get('/api/admin/orders/export', requireAuth, requireAdmin, async (req, res) => {
   try {
     const orders = await db.listOrders({ limit: 1000 });
 

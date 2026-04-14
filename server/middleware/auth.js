@@ -32,4 +32,25 @@ async function requireAuth(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth };
+// Admin middleware — must be used after requireAuth
+// Checks that the authenticated user has is_admin = true in customers table
+async function requireAdmin(req, res, next) {
+  if (!supabase || !req.authUser) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  const { data: customer } = await supabase
+    .from('customers')
+    .select('is_admin')
+    .eq('auth_id', req.authUser.id)
+    .limit(1)
+    .single();
+
+  if (!customer?.is_admin) {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  next();
+}
+
+module.exports = { requireAuth, requireAdmin };

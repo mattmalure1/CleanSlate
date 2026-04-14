@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../services/supabase');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
+
+// All quote log routes are admin-only
+router.use('/api/admin/quotes', requireAuth, requireAdmin);
 
 // GET /api/admin/quotes — list quote logs with filters and stats
 router.get('/api/admin/quotes', async (req, res) => {

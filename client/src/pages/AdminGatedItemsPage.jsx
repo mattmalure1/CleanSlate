@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { apiUrl } from '../api';
+import { apiUrl, adminFetch } from '../api';
 import {
   ShieldX, Plus, Trash2, RefreshCw, ArrowLeft, RotateCcw,
   Tag, Hash,
@@ -19,7 +19,7 @@ export default function AdminGatedItemsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(apiUrl('/api/admin/gated-items'));
+      const res = await adminFetch('/api/admin/gated-items');
       const data = await res.json();
       setItems(data.items || []);
     } catch (err) {
@@ -36,9 +36,8 @@ export default function AdminGatedItemsPage() {
     if (!newPattern.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(apiUrl('/api/admin/gated-items'), {
+      const res = await adminFetch('/api/admin/gated-items', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pattern: newPattern.trim(),
           match_type: newType,
@@ -59,7 +58,7 @@ export default function AdminGatedItemsPage() {
 
   const deactivate = async (id) => {
     try {
-      await fetch(apiUrl(`/api/admin/gated-items/${id}`), { method: 'DELETE' });
+      await adminFetch(`/api/admin/gated-items/${id}`, { method: 'DELETE' });
       await load();
     } catch (err) {
       alert('Failed to remove: ' + err.message);
@@ -68,7 +67,7 @@ export default function AdminGatedItemsPage() {
 
   const reactivate = async (id) => {
     try {
-      await fetch(apiUrl(`/api/admin/gated-items/${id}/reactivate`), { method: 'POST' });
+      await adminFetch(`/api/admin/gated-items/${id}/reactivate`, { method: 'POST' });
       await load();
     } catch (err) {
       alert('Failed to reactivate: ' + err.message);
