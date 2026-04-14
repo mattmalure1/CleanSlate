@@ -1,36 +1,39 @@
-import { useEffect, useRef, useState } from 'react';
-import { X, Camera, ShoppingCart, Trash2, Check, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { X, Camera, ShoppingCart, Trash2, Check, Loader2, Flashlight, FlashlightOff } from 'lucide-react';
 import { apiUrl } from '../api';
 import { useCart } from '../context/CartContext';
 
-// Session-level cache: avoids re-fetching the same barcode within one browser session.
-// Survives component mount/unmount cycles (e.g. close scanner, re-open).
+// Session-level cache — survives component mount/unmount within same page load.
 const sessionCache = new Map();
 
-export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
+// Target barcode formats for physical media (books, DVDs, CDs, games)
+const BARCODE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'];
+
+export default function BarcodeScanner({ onScan, onClose }) {
   const { addItem } = useCart();
   const onScanRef = useRef(onScan);
   const onCloseRef = useRef(onClose);
-  const scannerRef = useRef(null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const detectorRef = useRef(null);
+  const rafRef = useRef(null);
+  const lastScanTime = useRef(0);
+  const recentScans = useRef(new Set());
+  const stopped = useRef(false);
+
   const [error, setError] = useState(null);
   const [ready, setReady] = useState(false);
   const [items, setItems] = useState([]);
   const [pendingLookups, setPendingLookups] = useState(new Set());
-  // Flash indicator: { type: 'accept' | 'reject', text, key }
   const [flash, setFlash] = useState(null);
+  const [torchOn, setTorchOn] = useState(false);
+  const [hasTorch, setHasTorch] = useState(false);
   const flashTimer = useRef(null);
-  const recentScans = useRef(new Set());
-  const stopped = useRef(false);
 
   onScanRef.current = onScan;
   onCloseRef.current = onClose;
 
-  function showFlash(type, text) {
-    if (flashTimer.current) clearTimeout(flashTimer.current);
-    setFlash({ type, text, key: Date.now() });
-    flashTimer.current = setTimeout(() => setFlash(null), 1800);
-  }
-
+  // ── Audio + haptic feedback ──
   function playTone(freq, duration = 0.08) {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -42,50 +45,49 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
     } catch {}
   }
 
+  function vibrate() {
+    try { navigator.vibrate?.(50); } catch {}
+  }
+
+  function showFlash(type, text) {
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    setFlash({ type, text, key: Date.now() });
+    flashTimer.current = setTimeout(() => setFlash(null), 1800);
+  }
+
+  // ── Result handling ──
   function addResult(item) {
     setItems(prev => [item, ...prev]);
     const isPenny = item.status === 'penny';
     const ok = item.status === 'accepted' || item.status === 'low' || isPenny;
     if (ok) {
       addItem({
-        asin: item.asin,
-        title: item.title,
-        imageUrl: item.imageUrl,
-        offerCents: item.offerCents,
-        offerDisplay: item.offerDisplay,
-        category: item.category,
-        isDisc: item.isDisc,
-        hasCase: item.hasCase,
-        color: item.color,
-        label: item.label,
+        asin: item.asin, title: item.title, imageUrl: item.imageUrl,
+        offerCents: item.offerCents, offerDisplay: item.offerDisplay,
+        category: item.category, isDisc: item.isDisc, hasCase: item.hasCase,
+        color: item.color, label: item.label,
         tier: isPenny ? 'penny' : 'standard',
       });
       if (isPenny) {
         showFlash('penny', `${item.offerDisplay} bulk add — ${item.title || 'Added!'}`);
-        playTone(550, 0.10); // mid tone for penny
+        playTone(550, 0.10);
       } else {
         showFlash('accept', `${item.offerDisplay} — ${item.title || 'Added!'}`);
-        playTone(880, 0.08); // high beep
+        playTone(880, 0.08);
       }
     } else {
       showFlash('reject', item.message || item.reason || 'Pass');
-      playTone(330, 0.15); // low tone
+      playTone(330, 0.15);
     }
   }
 
-  // Non-blocking lookup — scanner keeps running while this executes.
-  // Uses session cache for instant re-scans.
+  // ── Non-blocking API lookup with session cache ──
   function lookupCode(code) {
-    // Session cache hit → instant, no API call
     if (sessionCache.has(code)) {
-      const cached = sessionCache.get(code);
-      addResult({ id: crypto.randomUUID(), code, ...cached });
+      addResult({ id: crypto.randomUUID(), code, ...sessionCache.get(code) });
       return;
     }
-
-    // Track this code as pending (non-blocking indicator)
     setPendingLookups(prev => new Set(prev).add(code));
-
     fetch(apiUrl(`/api/quote?code=${encodeURIComponent(code)}&hasCase=true`))
       .then(res => res.json().then(data => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
@@ -100,92 +102,112 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         addResult({ id: crypto.randomUUID(), code, title: 'Lookup failed', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 });
       })
       .finally(() => {
-        setPendingLookups(prev => {
-          const next = new Set(prev);
-          next.delete(code);
-          return next;
-        });
+        setPendingLookups(prev => { const n = new Set(prev); n.delete(code); return n; });
       });
   }
 
+  // ── Barcode detected callback ──
+  const onBarcode = useCallback((rawValue) => {
+    if (!rawValue || recentScans.current.has(rawValue)) return;
+
+    // Debounce: ignore same barcode for 1.5 seconds
+    recentScans.current.add(rawValue);
+    setTimeout(() => recentScans.current.delete(rawValue), 1500);
+
+    // Haptic + scan beep
+    vibrate();
+    playTone(660, 0.05);
+
+    lookupCode(rawValue);
+    onScanRef.current?.(rawValue);
+  }, []);
+
+  // ── Torch toggle ──
+  function toggleTorch() {
+    const track = streamRef.current?.getVideoTracks()?.[0];
+    if (!track) return;
+    const next = !torchOn;
+    track.applyConstraints({ advanced: [{ torch: next }] }).then(() => setTorchOn(next)).catch(() => {});
+  }
+
+  // ── Camera + detector init ──
   useEffect(() => {
-    let scanner = null;
+    let animating = true;
 
     async function init() {
       try {
-        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-        await new Promise(r => setTimeout(r, 200));
-        if (stopped.current) return;
-
-        // Two critical optimizations:
-        // 1. useBarCodeDetectorIfSupported: true → uses the native Chrome/Android
-        //    BarcodeDetector API when available (10-50x faster, better at distance
-        //    and angle, handles motion blur). Falls back to JS ZXing on unsupported browsers.
-        // 2. formatsToSupport → only scan the 5 barcode formats used on physical
-        //    media (books, DVDs, CDs, games). Skipping the other 13 formats
-        //    (QR, Aztec, DataMatrix, etc.) saves ~70% of CPU per frame.
-        scanner = new Html5Qrcode('scanner-region', {
-          useBarCodeDetectorIfSupported: true,
-          formatsToSupport: [
-            Html5QrcodeSupportedFormats.EAN_13,
-            Html5QrcodeSupportedFormats.EAN_8,
-            Html5QrcodeSupportedFormats.UPC_A,
-            Html5QrcodeSupportedFormats.UPC_E,
-            Html5QrcodeSupportedFormats.CODE_128,
-          ],
+        // 1. Open camera at 1080p with continuous autofocus
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 },
+            advanced: [{ focusMode: 'continuous' }],
+          },
+          audio: false,
         });
-        scannerRef.current = scanner;
 
-        const devices = await Html5Qrcode.getCameras();
-        if (!devices || devices.length === 0) {
-          setError('No camera found.');
-          return;
+        if (stopped.current) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+
+        // Check torch capability
+        const track = stream.getVideoTracks()[0];
+        const caps = track.getCapabilities?.() || {};
+        if (caps.torch) setHasTorch(true);
+
+        // Attach to video element
+        const video = videoRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        await video.play();
+
+        // 2. Create barcode detector (native or polyfill)
+        let detector;
+        if ('BarcodeDetector' in window) {
+          const supported = await window.BarcodeDetector.getSupportedFormats();
+          const formats = BARCODE_FORMATS.filter(f => supported.includes(f));
+          detector = new window.BarcodeDetector({ formats: formats.length > 0 ? formats : undefined });
+        } else {
+          // Polyfill fallback (barcode-detector package provides this)
+          const { BarcodeDetector } = await import('barcode-detector');
+          detector = new BarcodeDetector({ formats: BARCODE_FORMATS });
         }
-
-        const backCam = devices.find(d =>
-          /back|rear|environment/i.test(d.label)
-        );
-        const cameraId = backCam ? backCam.id : devices[devices.length - 1].id;
-
-        // No qrbox — scan the FULL camera frame. This gives html5-qrcode
-        // the entire 1920x1080 feed to analyze, producing the best possible
-        // barcode detection at any distance. A restricted qrbox crops the
-        // frame and requires the barcode to be centered inside a small box,
-        // which is why it only worked close-up.
-        await scanner.start(
-          { deviceId: { exact: cameraId } },
-          {
-            fps: 25,
-            // No qrbox = full-frame scanning
-            videoConstraints: {
-              deviceId: { exact: cameraId },
-              width: { ideal: 1920 },
-              height: { ideal: 1080 },
-              focusMode: 'continuous',
-            },
-          },
-          (text) => {
-            if (recentScans.current.has(text)) return;
-            recentScans.current.add(text);
-            setTimeout(() => recentScans.current.delete(text), 4000);
-
-            // Quick scan-detected beep (result beeps come later via addResult)
-            playTone(660, 0.05);
-
-            lookupCode(text);
-            onScanRef.current(text);
-          },
-          () => {}
-        );
+        detectorRef.current = detector;
 
         setReady(true);
+
+        // 3. Detection loop — throttled to ~10fps (100ms gap)
+        const MIN_INTERVAL = 100;
+
+        async function detectFrame() {
+          if (!animating || stopped.current) return;
+
+          const now = performance.now();
+          if (now - lastScanTime.current >= MIN_INTERVAL && video.readyState >= 2) {
+            lastScanTime.current = now;
+            try {
+              const barcodes = await detector.detect(video);
+              for (const barcode of barcodes) {
+                onBarcode(barcode.rawValue);
+              }
+            } catch {}
+          }
+          rafRef.current = requestAnimationFrame(detectFrame);
+        }
+
+        rafRef.current = requestAnimationFrame(detectFrame);
+
       } catch (err) {
         if (stopped.current) return;
-        if (String(err).includes('Permission') || String(err).includes('NotAllowed')) {
+        const msg = String(err);
+        if (msg.includes('Permission') || msg.includes('NotAllowed')) {
           setError('Camera access denied. Allow camera in browser settings.');
+        } else if (msg.includes('NotFound') || msg.includes('DevicesNotFound')) {
+          setError('No camera found on this device.');
         } else {
-          setError('Could not start camera.');
-          console.error(err);
+          setError('Could not start camera. Try refreshing.');
+          console.error('Scanner init error:', err);
         }
       }
     }
@@ -193,27 +215,24 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
     init();
 
     return () => {
+      animating = false;
       stopped.current = true;
-      if (scannerRef.current) {
-        scannerRef.current.stop().catch(() => {});
-        scannerRef.current = null;
-      }
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
     };
-  }, []);
+  }, [onBarcode]);
 
+  // ── Close handler ──
   function handleClose() {
     if (pendingLookups.size > 0) {
       if (!window.confirm(`${pendingLookups.size} lookup(s) still in progress. Close anyway?`)) return;
     }
-
     stopped.current = true;
-    const doClose = () => onCloseRef.current();
-    if (scannerRef.current) {
-      scannerRef.current.stop().then(doClose).catch(doClose);
-      scannerRef.current = null;
-    } else {
-      doClose();
-    }
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    onCloseRef.current();
   }
 
   function removeItem(id) {
@@ -234,18 +253,32 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         <span className="text-white font-semibold text-sm">
           {items.length > 0 ? `${items.length} scanned` : 'Scan barcodes'}
         </span>
-        {acceptedCount > 0 ? (
-          <span className="bg-brand-500 text-white text-sm font-bold px-4 py-2 rounded-full flex items-center gap-1.5">
-            <ShoppingCart size={16} />
-            {acceptedCount} in cart · ${(totalCents / 100).toFixed(2)}
-          </span>
-        ) : <div className="w-[44px]" />}
+        <div className="flex items-center gap-2">
+          {hasTorch && (
+            <button onClick={toggleTorch} className="text-white min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer">
+              {torchOn ? <FlashlightOff size={20} /> : <Flashlight size={20} />}
+            </button>
+          )}
+          {acceptedCount > 0 ? (
+            <span className="bg-brand-500 text-white text-sm font-bold px-4 py-2 rounded-full flex items-center gap-1.5">
+              <ShoppingCart size={16} />
+              {acceptedCount} · ${(totalCents / 100).toFixed(2)}
+            </span>
+          ) : <div className="w-[44px]" />}
+        </div>
       </div>
 
-      {/* Camera — ALWAYS full remaining height. Results overlay on top, never push it smaller. */}
+      {/* Camera — always full height */}
       <div className="relative flex-1 overflow-hidden bg-black">
-        <div id="scanner-region" className="w-full h-full" />
+        <video
+          ref={videoRef}
+          className="w-full h-full object-cover"
+          playsInline
+          muted
+          autoPlay
+        />
 
+        {/* Loading state */}
         {!error && !ready && (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-white gap-3 bg-black z-20">
             <Camera size={40} className="animate-pulse" />
@@ -253,7 +286,22 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
           </div>
         )}
 
-        {/* Non-blocking lookup indicator */}
+        {/* Scan region overlay — centered target box */}
+        {ready && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+            <div className="w-[280px] h-[160px] sm:w-[400px] sm:h-[200px] border-2 border-brand-400/60 rounded-xl relative">
+              {/* Corner accents */}
+              <div className="absolute -top-0.5 -left-0.5 w-6 h-6 border-t-3 border-l-3 border-brand-400 rounded-tl-lg" />
+              <div className="absolute -top-0.5 -right-0.5 w-6 h-6 border-t-3 border-r-3 border-brand-400 rounded-tr-lg" />
+              <div className="absolute -bottom-0.5 -left-0.5 w-6 h-6 border-b-3 border-l-3 border-brand-400 rounded-bl-lg" />
+              <div className="absolute -bottom-0.5 -right-0.5 w-6 h-6 border-b-3 border-r-3 border-brand-400 rounded-br-lg" />
+              {/* Scan line */}
+              <div className="absolute top-1/2 left-2 right-2 h-[2px] bg-brand-400/50 animate-pulse" />
+            </div>
+          </div>
+        )}
+
+        {/* Pending lookup indicator */}
         {pendingLookups.size > 0 && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
             <Loader2 size={14} className="animate-spin" />
@@ -261,7 +309,7 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
           </div>
         )}
 
-        {/* Accept/reject flash indicator — shows briefly when result arrives */}
+        {/* Flash indicator */}
         {flash && (
           <div
             key={flash.key}
@@ -281,10 +329,9 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
           </div>
         )}
 
-        {/* Results overlay — floats OVER the camera at the bottom, never shrinks the viewfinder */}
+        {/* Results overlay */}
         {items.length > 0 && (
           <div className="absolute bottom-0 left-0 right-0 z-20 bg-black/90 max-h-[30vh] overflow-y-auto border-t border-white/10">
-            {/* Running total bar */}
             <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-brand-900/95 border-b border-white/10">
               <span className="text-white/70 text-xs">{acceptedCount} item{acceptedCount !== 1 ? 's' : ''} accepted</span>
               <span className="text-brand-400 font-bold text-sm">${(totalCents / 100).toFixed(2)}</span>
@@ -322,11 +369,11 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
           </div>
         )}
 
-        {/* Bottom instruction — only when no items scanned yet */}
+        {/* Bottom instruction */}
         {items.length === 0 && !error && ready && (
           <div className="absolute bottom-0 left-0 right-0 z-10 bg-black/70 text-center py-3 px-6">
             <p className="text-white text-sm font-medium">Point camera at any barcode</p>
-            <p className="text-white/40 text-xs mt-0.5">ISBN, UPC, or EAN — any orientation</p>
+            <p className="text-white/40 text-xs mt-0.5">ISBN, UPC, or EAN — works from 6-18 inches</p>
           </div>
         )}
       </div>
