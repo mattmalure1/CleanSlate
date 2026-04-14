@@ -26,7 +26,7 @@ let cacheMisses = 0;
  *   `_cacheMeta: { hit, cachedAt, ageMs }` for the debugger UI.
  */
 async function lookupByCode(code, opts = {}) {
-  const { forceRefresh = false, debugMeta = false } = opts;
+  const { forceRefresh = false, debugMeta = false, lean = false } = opts;
 
   // Check cache first (skipped on force refresh)
   if (!forceRefresh) {
@@ -60,9 +60,21 @@ async function lookupByCode(code, opts = {}) {
 
   cacheMisses++;
 
-  // stats=180 (was 365): the engine only reads current/avg90/salesRankDrops30/90/180.
-  // The 365-day seasonal adjustment was removed in the 2026-04-10 spec alignment.
-  const url = `https://api.keepa.com/product?key=${KEEPA_API_KEY}&domain=1&code=${code}&offers=20&days=180&stats=180&buybox=1`;
+  // Two Keepa request sizes:
+  //
+  // LEAN (customer quotes): stats + buybox only. No offers array, no CSV history.
+  //   Response: ~10-20KB → fast parse, fast transfer.
+  //   The engine only reads stats.current[32], stats.avg90[32], salesRankDrops90,
+  //   packageWeight/dims, categoryTree — all returned without offers or days params.
+  //   fba_offer_count defaults to 0 if newOffersFBA isn't in the response
+  //   (safe: competition check won't false-reject, just won't apply the crowded penalty).
+  //
+  // FULL (admin debugger, product review): includes offers=20 + days=180.
+  //   Response: ~100-300KB → slower but has individual seller offers for debugging.
+  //
+  const url = lean
+    ? `https://api.keepa.com/product?key=${KEEPA_API_KEY}&domain=1&code=${code}&stats=180&buybox=1`
+    : `https://api.keepa.com/product?key=${KEEPA_API_KEY}&domain=1&code=${code}&offers=20&days=180&stats=180&buybox=1`;
 
   const fetchPromise = (async () => {
     const response = await fetch(url, {

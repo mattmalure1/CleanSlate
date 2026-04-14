@@ -14,7 +14,9 @@ router.get('/api/quote', async (req, res) => {
       return res.status(400).json({ error: 'Missing required parameter: code' });
     }
 
-    const keepaResponse = await keepa.lookupByCode(code);
+    // lean: true → skips offers array + CSV history. Response is ~10-20KB
+    // instead of ~100-300KB. Cuts Keepa response time from 10-15s to 1-3s.
+    const keepaResponse = await keepa.lookupByCode(code, { lean: true });
 
     if (!keepaResponse.products || keepaResponse.products.length === 0) {
       return res.status(404).json({ error: "We couldn't find this item" });
@@ -76,7 +78,7 @@ router.get('/api/requote', async (req, res) => {
     }
 
     // This will hit cache if the code was recently looked up
-    const keepaResponse = await keepa.lookupByCode(code);
+    const keepaResponse = await keepa.lookupByCode(code, { lean: true });
 
     if (!keepaResponse.products || keepaResponse.products.length === 0) {
       return res.status(404).json({ error: "We couldn't find this item" });
@@ -135,7 +137,7 @@ router.post('/api/bulk-quote', async (req, res) => {
       }
 
       try {
-        const keepaResponse = await keepa.lookupByCode(code);
+        const keepaResponse = await keepa.lookupByCode(code, { lean: true });
         if (!keepaResponse.products || keepaResponse.products.length === 0) {
           results.push({ code, status: 'rejected', reason: 'not_found', message: "We couldn't find this item", offerCents: 0, offerDisplay: '$0.00' });
           continue;
