@@ -3,6 +3,7 @@ const router = express.Router();
 const keepa = require('../services/keepa');
 const { calculateOffer, runOfferEngine, extractKeepaFields, isGated } = require('../services/offerEngine');
 const db = require('../services/supabase');
+const { notifyQuoteSubmitted } = require('../services/email');
 
 // GET /api/quote?code=ISBN_OR_UPC&hasCase=true
 router.get('/api/quote', async (req, res) => {
@@ -61,6 +62,13 @@ router.get('/api/quote', async (req, res) => {
     // Powers the Quote Debugger and rejection-reason analytics.
     db.logQuoteItem({ upc: code, offerOutput: engineResult })
       .catch(err => console.error('Quote item log error:', err.message));
+
+    // Fire-and-forget email notification to Matt
+    notifyQuoteSubmitted({
+      code, title: offer.title, asin: offer.asin, category: offer.category,
+      status: offer.status, offerCents: offer.offerCents, offerDisplay: offer.offerDisplay,
+      tier: offer.tier, genre: offer.genre, bundleLabel: offer.bundleLabel,
+    }).catch(err => console.error('Email notify error:', err.message));
   } catch (err) {
     console.error('Quote error:', err.message);
     res.status(500).json({ error: 'Failed to get quote. Please try again.' });
