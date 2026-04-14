@@ -284,6 +284,11 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         {/* Results overlay — floats OVER the camera at the bottom, never shrinks the viewfinder */}
         {items.length > 0 && (
           <div className="absolute bottom-0 left-0 right-0 z-20 bg-black/90 max-h-[30vh] overflow-y-auto border-t border-white/10">
+            {/* Running total bar */}
+            <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-2 bg-brand-900/95 border-b border-white/10">
+              <span className="text-white/70 text-xs">{acceptedCount} item{acceptedCount !== 1 ? 's' : ''} accepted</span>
+              <span className="text-brand-400 font-bold text-sm">${(totalCents / 100).toFixed(2)}</span>
+            </div>
             {items.map((item, i) => {
               const isPenny = item.status === 'penny';
               const ok = item.status === 'accepted' || item.status === 'low' || isPenny;
