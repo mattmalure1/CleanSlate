@@ -9,16 +9,16 @@ import QuoteCard from '../components/QuoteCard';
 import FAQ from '../components/FAQ';
 
 const CATEGORIES = [
-  { id: 'book', label: 'Books' },
-  { id: 'dvd', label: 'DVDs & Blu-rays' },
-  { id: 'cd', label: 'CDs' },
-  { id: 'game', label: 'Video Games' },
+  { id: 'book', label: 'Books', image: '/images/cat-books.png' },
+  { id: 'dvd', label: 'DVDs & Blu-rays', image: '/images/cat-dvds.png' },
+  { id: 'cd', label: 'CDs', image: '/images/cat-cds.png' },
+  { id: 'game', label: 'Video Games', image: '/images/cat-games.png' },
 ];
 
 const STEPS = [
-  { icon: ScanBarcode, title: 'Get Instant Quotes', desc: 'Scan a barcode or enter an ISBN/UPC. See your offer in seconds.' },
-  { icon: Truck, title: 'Ship for Free', desc: 'We email you a prepaid USPS Media Mail label. Just pack and drop off.' },
-  { icon: Wallet, title: 'Get Paid Fast', desc: 'Choose PayPal, Venmo, or check. Payment sent within 2-3 business days.' },
+  { image: '/images/scan-barcode.png', title: 'Get Instant Quotes', desc: 'Scan a barcode or enter an ISBN/UPC. See your offer in seconds.' },
+  { image: '/images/ship-box.png', title: 'Ship for Free', desc: 'We email you a prepaid USPS Media Mail label. Just pack and drop off.' },
+  { image: '/images/get-paid.png', title: 'Get Paid Fast', desc: 'Choose PayPal, Venmo, or check. Payment sent within 2-3 business days.' },
 ];
 
 const US_VS_THEM = [
@@ -52,8 +52,12 @@ export default function HomePage() {
     <div>
       {/* ─── HERO ─── */}
       <section className="relative overflow-hidden bg-gradient-to-br from-brand-800 via-brand-900 to-brand-800">
-        {/* Subtle pattern overlay */}
-        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
+        {/* Hero spread image as subtle background */}
+        <div className="absolute inset-0 opacity-[0.08]">
+          <img src="/images/hero-spread.png" alt="" className="w-full h-full object-cover" />
+        </div>
+        {/* Gradient overlay on top of image */}
+        <div className="absolute inset-0 bg-gradient-to-b from-brand-900/80 via-brand-800/60 to-brand-900/90" />
 
         <div className="relative max-w-3xl mx-auto px-[var(--spacing-page)] pt-12 pb-14 text-center">
           <h1 className="font-display font-extrabold text-4xl sm:text-5xl lg:text-[3.5rem] text-white leading-[1.1] tracking-tight">
@@ -82,6 +86,15 @@ export default function HomePage() {
                 {cat.label}
               </button>
             ))}
+          </div>
+
+          {/* Category showcase image */}
+          <div className="mt-6 flex justify-center">
+            <img
+              src={CATEGORIES.find(c => c.id === activeCategory)?.image}
+              alt={CATEGORIES.find(c => c.id === activeCategory)?.label}
+              className="w-48 h-48 object-contain rounded-2xl drop-shadow-xl"
+            />
           </div>
 
           {/* Scan button — big and obvious */}
@@ -160,23 +173,22 @@ export default function HomePage() {
         <p className="text-text-secondary text-center mt-2 mb-12">Three steps. That's it.</p>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
-          {STEPS.map((step, i) => {
-            const Icon = step.icon;
-            return (
-              <div key={step.title} className="flex flex-col items-center text-center group">
-                <div className="relative mb-5">
-                  <div className="w-18 h-18 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-lg shadow-brand-500/20 group-hover:shadow-brand-500/30 group-hover:scale-105">
-                    <Icon size={32} className="text-white" strokeWidth={1.6} />
-                  </div>
-                  <span className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-brand-900 text-white text-xs font-bold flex items-center justify-center ring-2 ring-background">
-                    {i + 1}
-                  </span>
-                </div>
-                <h3 className="font-display text-lg font-bold text-text-primary">{step.title}</h3>
-                <p className="mt-2 text-sm text-text-secondary leading-relaxed max-w-[220px]">{step.desc}</p>
+          {STEPS.map((step, i) => (
+            <div key={step.title} className="flex flex-col items-center text-center group">
+              <div className="relative mb-5">
+                <img
+                  src={step.image}
+                  alt={step.title}
+                  className="w-48 h-36 object-cover rounded-2xl shadow-lg group-hover:shadow-xl group-hover:scale-[1.03] transition-all"
+                />
+                <span className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-brand-900 text-white text-xs font-bold flex items-center justify-center ring-2 ring-background">
+                  {i + 1}
+                </span>
               </div>
-            );
-          })}
+              <h3 className="font-display text-lg font-bold text-text-primary">{step.title}</h3>
+              <p className="mt-2 text-sm text-text-secondary leading-relaxed max-w-[220px]">{step.desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -249,6 +261,35 @@ export default function HomePage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── TRUST / WORKSPACE ─── */}
+      <section className="max-w-4xl mx-auto px-[var(--spacing-page)] py-14">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 items-center">
+          <img
+            src="/images/workspace.png"
+            alt="CleanSlate media processing workspace"
+            className="w-full rounded-2xl shadow-lg"
+          />
+          <div>
+            <h2 className="font-display text-2xl font-bold text-text-primary">
+              Every item carefully inspected
+            </h2>
+            <p className="mt-3 text-sm text-text-secondary leading-relaxed">
+              Your items arrive at our processing center where each one is individually inspected, sorted by category, and prepared for resale. We photograph any issues and always pay what we quoted.
+            </p>
+            <div className="mt-5 space-y-2.5">
+              {['Photo evidence for any adjustments', 'Payment within 3 business days', 'Free return shipping on rejected items'].map(item => (
+                <div key={item} className="flex items-center gap-2.5 text-sm text-text-primary">
+                  <span className="w-5 h-5 rounded-full bg-accept/10 flex items-center justify-center flex-shrink-0">
+                    <Check size={12} className="text-accept" strokeWidth={3} />
+                  </span>
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
