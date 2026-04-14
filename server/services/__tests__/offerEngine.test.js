@@ -992,12 +992,14 @@ describe('V2: Sub-category classification', () => {
     assert.equal(r.minNetProfit, 50);
   });
 
-  test('classifySubCategory: generic fiction → bulk ($0.05)', () => {
+  test('classifySubCategory: generic fiction → bundle ($0.05) with genre', () => {
     const r = engine.classifySubCategory('book', 'The Great Gatsby');
     assert.equal(r.reject, false);
-    assert.equal(r.subCategory, 'generic_book');
+    assert.equal(r.subCategory, 'bundle_book');
     assert.equal(r.pennyOffer, 5);
     assert.equal(r.minNetProfit, 25);
+    assert.equal(r.disposition, 'ebay_bundle');
+    assert.ok(r.bundleLabel, 'should have a bundle label');
   });
 
   test('classifySubCategory: DreamWorks DVD → reject', () => {
@@ -1006,16 +1008,34 @@ describe('V2: Sub-category classification', () => {
     assert.equal(r.subCategory, 'reject_dvd');
   });
 
-  test('classifySubCategory: horror DVD → keeper', () => {
-    const r = engine.classifySubCategory('dvd', 'The Exorcist - Horror Classic');
-    assert.equal(r.subCategory, 'keeper_dvd');
-    assert.equal(r.pennyOffer, 10);
+  test('classifySubCategory: generic mainstream DVD → bundle ($0.05) with action genre', () => {
+    const r = engine.classifySubCategory('dvd', 'The Avengers');
+    assert.equal(r.subCategory, 'bundle_dvd');
+    assert.equal(r.pennyOffer, 5);
+    assert.equal(r.genre, 'action'); // Avengers matches action patterns
+    assert.ok(r.bundleLabel.includes('Action'), `expected Action label, got: ${r.bundleLabel}`);
   });
 
-  test('classifySubCategory: generic mainstream DVD → bulk ($0.05)', () => {
-    const r = engine.classifySubCategory('dvd', 'The Avengers');
-    assert.equal(r.subCategory, 'generic_dvd');
+  test('classifySubCategory: horror DVD → bundle with horror genre (eBay lot)', () => {
+    // Horror DVDs go into "25 Horror DVDs" eBay bulk lots
+    const r = engine.classifySubCategory('dvd', 'The Exorcist - Horror Classic');
+    assert.equal(r.subCategory, 'bundle_dvd');
     assert.equal(r.pennyOffer, 5);
+    assert.equal(r.genre, 'horror');
+    assert.equal(r.disposition, 'ebay_bundle');
+    assert.ok(r.bundleLabel.includes('Horror'), `expected Horror label, got: ${r.bundleLabel}`);
+  });
+
+  test('detectGenre: identifies horror from title', () => {
+    assert.equal(engine.detectGenre('dvd', 'Night of the Living Dead - Zombie Horror'), 'horror');
+  });
+
+  test('detectGenre: identifies rock from CD title', () => {
+    assert.equal(engine.detectGenre('cd', 'Metallica - Master of Puppets'), 'rock');
+  });
+
+  test('detectGenre: returns mixed for generic title', () => {
+    assert.equal(engine.detectGenre('dvd', 'Some Random Movie'), 'mixed');
   });
 
   test('classifySubCategory: Kidz Bop CD → reject', () => {
@@ -1023,10 +1043,19 @@ describe('V2: Sub-category classification', () => {
     assert.equal(r.reject, true);
   });
 
-  test('classifySubCategory: metal CD → keeper', () => {
+  test('classifySubCategory: metal CD → bundle with rock genre', () => {
     const r = engine.classifySubCategory('cd', 'Metallica - Master of Puppets');
+    assert.equal(r.subCategory, 'bundle_cd');
+    assert.equal(r.pennyOffer, 5);
+    assert.equal(r.genre, 'rock');
+    assert.ok(r.bundleLabel.includes('Rock'), `expected Rock label, got: ${r.bundleLabel}`);
+  });
+
+  test('classifySubCategory: limited edition CD → keeper', () => {
+    const r = engine.classifySubCategory('cd', 'Limited Edition Box Set - Beethoven Complete');
     assert.equal(r.subCategory, 'keeper_cd');
     assert.equal(r.pennyOffer, 10);
+    assert.equal(r.disposition, 'amazon_fba');
   });
 
   test('classifySubCategory: Madden game → reject', () => {

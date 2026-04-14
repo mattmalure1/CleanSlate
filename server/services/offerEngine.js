@@ -58,66 +58,111 @@ const MAX_HEIGHT_MM = 203; // 8 in
 const MAX_WEIGHT_G  = 9072; // 20 lbs
 
 // ------------------------------------------------------------
-// Sub-category classifier (V2 spec)
+// Sub-category classifier (V2 spec + eBay bundle economics)
 //
-// Classifies items into keeper/bulk/reject sub-categories based
-// on title keywords and category. This determines:
-//   - Whether the item can enter penny tier at all (rejects can't)
-//   - The penny offer amount ($0.10 keeper vs $0.05 bulk)
-//   - The minimum net profit required ($0.50 vs $0.25)
-// Runs after category detection but before pricing math.
+// Three outcomes per item:
+//   1. KEEPER  → goes to Amazon FBA individually ($0.10 penny, min net $0.50)
+//   2. BUNDLE  → goes into a genre-specific eBay bulk lot ($0.05 penny, min net $0.25)
+//              Genre determines the lot label ("25 Horror DVDs", "Metal CDs", etc.)
+//   3. REJECT  → truly unsellable, even in a bundle
+//
+// eBay bundle economics:
+//   A lot of 25 genre-matched DVDs sells for $15-35 on eBay depending on genre.
+//   After eBay fees (~13%) + flat-rate shipping (~$10), net is $3-20 per lot.
+//   At $0.05/item acquisition cost, 25 items = $1.25 cost → profitable on any genre
+//   that nets $3+ per lot. The genre tag just determines what lot it goes into.
 // ------------------------------------------------------------
 
-const SUB_CAT_RULES = {
-  book: {
-    reject: [/romance/i, /reader'?s?\s*digest/i, /harlequin/i],
-    keeper: [/textbook/i, /\bedition\b/i, /engineering/i, /medical/i, /theology/i,
-             /\bd\s*&\s*d\b/i, /dungeons/i, /programming/i, /computer science/i,
-             /nursing/i, /anatomy/i, /physics/i, /chemistry/i, /calculus/i,
-             /law\b/i, /legal/i],
-    // default: generic_book ($0.05)
-  },
-  dvd: {
-    reject: [/dreamworks/i, /nickelodeon/i, /nick\s*jr/i, /paw\s*patrol/i,
-             /sports\s*highlight/i, /nfl\s*films/i, /espn/i],
-    keeper: [/criterion/i, /arrow\s*video/i, /scream\s*factory/i, /horror/i,
-             /anime/i, /disney/i, /tv\s*(series|season|box\s*set|complete)/i,
-             /workout/i, /fitness/i, /christian/i, /4k\s*uhd/i, /steelbook/i,
-             /collector/i],
-    // default: bulk_dvd ($0.05)
-  },
-  bluray: {
-    reject: [/dreamworks/i, /nickelodeon/i, /nick\s*jr/i, /paw\s*patrol/i,
-             /sports\s*highlight/i],
-    keeper: [/criterion/i, /arrow\s*video/i, /scream\s*factory/i, /horror/i,
-             /anime/i, /disney/i, /tv\s*(series|season|box\s*set|complete)/i,
-             /4k\s*uhd/i, /steelbook/i, /collector/i],
-    // default: bulk_dvd ($0.05)
-  },
-  cd: {
-    reject: [/now\s*that'?s?\s*what\s*i\s*call/i, /kidz\s*bop/i,
-             /various\s*artists/i, /top\s*40/i, /NOW\s*\d+/i],
-    keeper: [/metal/i, /gospel/i, /christian/i, /soundtrack/i, /classical/i,
-             /jazz/i, /foreign\s*language/i, /box\s*set/i, /promo/i,
-             /import/i, /limited/i],
-    // default: bulk_cd ($0.05)
-  },
-  game: {
-    reject: [/\b(madden|nba\s*2k|fifa|nhl|mlb|wwe|pes|pro\s*evolution)\b/i,
-             /\bdemo\b/i, /\bpromo\b/i, /sports\s*(game|champion)/i],
-    keeper: [], // default for games is keeper ($0.10 — games hold value)
-    defaultIsKeeper: true, // games default to keeper, not bulk
-  },
+const REJECT_PATTERNS = {
+  book: [/romance/i, /reader'?s?\s*digest/i, /harlequin/i, /danielle\s*steel/i,
+         /nora\s*roberts/i, /coloring\s*book/i, /activity\s*book/i],
+  dvd:  [/dreamworks/i, /nickelodeon/i, /paw\s*patrol/i, /nick\s*jr/i, /barney/i, /teletubbies/i,
+         /sports\s*highlight/i, /nfl\s*films/i, /espn/i],
+  bluray: [/paw\s*patrol/i, /nick\s*jr/i, /barney/i],
+  cd:   [/now\s*that'?s?\s*what\s*i\s*call/i, /kidz\s*bop/i, /various\s*artists/i,
+         /top\s*40/i, /NOW\s*\d+/i, /karaoke/i],
+  game: [/\b(madden|nba\s*2k|fifa|nhl|mlb|wwe|pes|pro\s*evolution)\b/i,
+         /\bdemo\b/i, /\bpromo\b/i],
 };
 
-function classifySubCategory(category, title) {
-  const rules = SUB_CAT_RULES[category];
-  if (!rules) return { subCategory: 'unknown', pennyOffer: 10, minNetProfit: 50, reject: false };
+const KEEPER_PATTERNS = {
+  book: [/textbook/i, /\bedition\b/i, /engineering/i, /medical/i, /theology/i,
+         /\bd\s*&\s*d\b/i, /dungeons/i, /programming/i, /computer science/i,
+         /nursing/i, /anatomy/i, /physics/i, /chemistry/i, /calculus/i,
+         /law\b/i, /legal/i],
+  dvd:  [/criterion/i, /arrow\s*video/i, /scream\s*factory/i, /4k\s*uhd/i,
+         /steelbook/i, /collector/i, /tv\s*(series|season|box\s*set|complete)/i],
+  bluray: [/criterion/i, /arrow\s*video/i, /scream\s*factory/i, /4k\s*uhd/i,
+           /steelbook/i, /collector/i, /tv\s*(series|season|box\s*set|complete)/i],
+  cd:   [/box\s*set/i, /import/i, /limited/i, /promo/i, /vinyl/i],
+  game: [], // games default to keeper
+};
 
+// Genre detection for eBay bundle lots.
+// Returns a genre tag that becomes the lot label ("Horror DVDs", "Metal CDs", etc.)
+// Order matters: first match wins.
+const GENRE_RULES = {
+  dvd: [
+    { genre: 'horror',     patterns: [/horror/i, /slasher/i, /zombie/i, /vampire/i, /haunting/i, /exorcis/i, /nightmare/i, /scream\b/i, /saw\b/i, /conjuring/i, /evil\s*dead/i] },
+    { genre: 'action',     patterns: [/action/i, /thriller/i, /mission\s*impossible/i, /fast\s*(and|&)\s*furious/i, /die\s*hard/i, /john\s*wick/i, /james\s*bond/i, /007/i, /marvel/i, /avengers/i, /batman/i, /spider.?man/i] },
+    { genre: 'comedy',     patterns: [/comedy/i, /funny/i, /laugh/i, /hangover/i, /superbad/i, /adam\s*sandler/i, /will\s*ferrell/i, /jim\s*carrey/i] },
+    { genre: 'sci-fi',     patterns: [/sci.?fi/i, /science\s*fiction/i, /star\s*wars/i, /star\s*trek/i, /alien/i, /terminator/i, /matrix/i, /blade\s*runner/i] },
+    { genre: 'anime',      patterns: [/anime/i, /ghibli/i, /miyazaki/i, /manga/i, /dragon\s*ball/i, /naruto/i, /one\s*piece/i, /gundam/i] },
+    { genre: 'disney',     patterns: [/disney/i, /pixar/i, /frozen/i, /moana/i, /lion\s*king/i, /aladdin/i, /toy\s*story/i, /finding\s*(nemo|dory)/i] },
+    { genre: 'drama',      patterns: [/drama/i, /oscar/i, /academy\s*award/i] },
+    { genre: 'workout',    patterns: [/workout/i, /fitness/i, /exercise/i, /yoga/i, /p90x/i, /insanity/i, /pilates/i, /jillian/i] },
+    { genre: 'christian',  patterns: [/christian/i, /faith/i, /gospel/i, /church/i, /bible/i, /veggie\s*tales/i] },
+    { genre: 'kids',       patterns: [/kids/i, /children/i, /family/i, /animated/i, /cartoon/i, /sesame/i] },
+  ],
+  bluray: 'dvd', // same genre rules as DVD
+  cd: [
+    { genre: 'rock',       patterns: [/rock/i, /metal/i, /punk/i, /grunge/i, /alternative/i, /hard\s*rock/i, /classic\s*rock/i, /iron\s*maiden/i, /metallica/i, /nirvana/i, /ac\/?dc/i, /led\s*zeppelin/i] },
+    { genre: 'hip-hop',    patterns: [/hip.?hop/i, /rap/i, /r\s*&\s*b/i, /rnb/i, /kanye/i, /drake/i, /eminem/i, /jay.?z/i, /tupac/i, /biggie/i, /kendrick/i] },
+    { genre: 'country',    patterns: [/country/i, /nashville/i, /bluegrass/i, /johnny\s*cash/i, /dolly/i, /garth/i, /willie\s*nelson/i] },
+    { genre: 'jazz',       patterns: [/jazz/i, /blues/i, /swing/i, /miles\s*davis/i, /coltrane/i, /monk/i, /ella/i] },
+    { genre: 'classical',  patterns: [/classical/i, /symphony/i, /orchestra/i, /beethoven/i, /mozart/i, /bach/i, /chopin/i, /opera/i] },
+    { genre: 'christian',  patterns: [/christian/i, /gospel/i, /worship/i, /hymn/i, /hillsong/i] },
+    { genre: 'soundtrack', patterns: [/soundtrack/i, /original\s*(motion|cast)/i, /score/i, /ost\b/i] },
+    { genre: 'pop',        patterns: [/pop/i, /dance/i, /electronic/i, /edm/i, /synth/i] },
+  ],
+  book: [
+    { genre: 'sci-fi',     patterns: [/sci.?fi/i, /science\s*fiction/i, /fantasy/i, /tolkien/i, /asimov/i, /dune\b/i, /game\s*of\s*thrones/i] },
+    { genre: 'mystery',    patterns: [/mystery/i, /thriller/i, /detective/i, /suspense/i, /crime/i, /murder/i, /whodunit/i] },
+    { genre: 'history',    patterns: [/history/i, /historical/i, /world\s*war/i, /civil\s*war/i, /biography/i, /memoir/i] },
+    { genre: 'self-help',  patterns: [/self.?help/i, /motivation/i, /habit/i, /mindset/i, /success/i, /productivity/i, /leadership/i] },
+    { genre: 'business',   patterns: [/business/i, /entrepreneur/i, /marketing/i, /finance/i, /invest/i, /startup/i, /management/i] },
+    { genre: 'religion',   patterns: [/christian/i, /bible/i, /faith/i, /church/i, /spiritual/i, /devotion/i, /prayer/i] },
+    { genre: 'cooking',    patterns: [/cook/i, /recipe/i, /kitchen/i, /baking/i, /food/i, /chef/i] },
+    { genre: 'fiction',    patterns: [/novel/i, /fiction/i, /stories/i] },
+  ],
+  game: [
+    { genre: 'rpg',        patterns: [/rpg/i, /role.?play/i, /final\s*fantasy/i, /zelda/i, /elder\s*scrolls/i, /witcher/i, /dragon\s*age/i, /persona/i, /dark\s*souls/i] },
+    { genre: 'shooter',    patterns: [/shooter/i, /call\s*of\s*duty/i, /halo\b/i, /battlefield/i, /gears\s*of\s*war/i, /doom\b/i, /bioshock/i] },
+    { genre: 'adventure',  patterns: [/adventure/i, /uncharted/i, /tomb\s*raider/i, /assassin/i, /god\s*of\s*war/i, /red\s*dead/i, /gta\b/i, /grand\s*theft/i] },
+    { genre: 'nintendo',   patterns: [/mario/i, /pokemon/i, /kirby/i, /smash\s*bros/i, /animal\s*crossing/i, /splatoon/i, /metroid/i] },
+    { genre: 'racing',     patterns: [/racing/i, /forza/i, /gran\s*turismo/i, /need\s*for\s*speed/i, /mario\s*kart/i] },
+  ],
+};
+
+function detectGenre(category, title) {
+  let rules = GENRE_RULES[category];
+  if (typeof rules === 'string') rules = GENRE_RULES[rules]; // bluray -> dvd
+  if (!rules) return 'mixed';
+  const text = (title || '').toLowerCase();
+  for (const { genre, patterns } of rules) {
+    for (const p of patterns) {
+      if (p.test(text)) return genre;
+    }
+  }
+  return 'mixed'; // no genre matched — goes into a "mixed lot"
+}
+
+function classifySubCategory(category, title) {
   const text = (title || '').toLowerCase();
 
-  // Check reject patterns first
-  for (const pattern of rules.reject) {
+  // 1. Check reject patterns
+  const rejectPatterns = REJECT_PATTERNS[category] || [];
+  for (const pattern of rejectPatterns) {
     if (pattern.test(text)) {
       return {
         subCategory: `reject_${category}`,
@@ -125,27 +170,65 @@ function classifySubCategory(category, title) {
         rejectReason: `Sub-category not accepted (${category})`,
         pennyOffer: 0,
         minNetProfit: 0,
+        genre: null,
+        disposition: null,
       };
     }
   }
 
-  // Check keeper patterns
-  for (const pattern of rules.keeper) {
+  // 2. Check keeper patterns (Amazon FBA individually)
+  const keeperPatterns = KEEPER_PATTERNS[category] || [];
+  for (const pattern of keeperPatterns) {
     if (pattern.test(text)) {
       return {
         subCategory: `keeper_${category}`,
         pennyOffer: 10,   // $0.10
         minNetProfit: 50,  // $0.50
         reject: false,
+        genre: null,
+        disposition: 'amazon_fba',
       };
     }
   }
 
-  // Default: keeper for games, bulk for everything else
-  if (rules.defaultIsKeeper) {
-    return { subCategory: `keeper_${category}`, pennyOffer: 10, minNetProfit: 50, reject: false };
+  // 3. Games default to keeper (hold value well)
+  if (category === 'game') {
+    return {
+      subCategory: `keeper_${category}`,
+      pennyOffer: 10,
+      minNetProfit: 50,
+      reject: false,
+      genre: detectGenre(category, title),
+      disposition: 'amazon_fba',
+    };
   }
-  return { subCategory: `generic_${category}`, pennyOffer: 5, minNetProfit: 25, reject: false };
+
+  // 4. Everything else → eBay bundle lot by genre
+  const genre = detectGenre(category, title);
+  return {
+    subCategory: `bundle_${category}`,
+    pennyOffer: 5,     // $0.05
+    minNetProfit: 25,   // $0.25
+    reject: false,
+    genre,
+    disposition: 'ebay_bundle',
+    bundleLabel: formatBundleLabel(category, genre),
+  };
+}
+
+function formatBundleLabel(category, genre) {
+  const catNames = { book: 'Books', dvd: 'DVDs', bluray: 'Blu-rays', cd: 'CDs', game: 'Games' };
+  const genreNames = {
+    horror: 'Horror', action: 'Action', comedy: 'Comedy', 'sci-fi': 'Sci-Fi',
+    anime: 'Anime', disney: 'Disney', drama: 'Drama', workout: 'Workout',
+    christian: 'Christian', kids: 'Kids', rock: 'Rock/Metal', 'hip-hop': 'Hip-Hop/R&B',
+    country: 'Country', jazz: 'Jazz/Blues', classical: 'Classical', soundtrack: 'Soundtracks',
+    pop: 'Pop/Dance', mystery: 'Mystery/Thriller', history: 'History', 'self-help': 'Self-Help',
+    business: 'Business', religion: 'Religious', cooking: 'Cooking', fiction: 'Fiction',
+    rpg: 'RPG', shooter: 'Shooter', adventure: 'Adventure', nintendo: 'Nintendo', racing: 'Racing',
+    mixed: 'Mixed',
+  };
+  return `${genreNames[genre] || 'Mixed'} ${catNames[category] || 'Items'}`;
 }
 
 // ------------------------------------------------------------
@@ -667,6 +750,9 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
     // $0.05 bulk) and check for reject sub-categories (romance, sports games, etc.)
     const subCat = classifySubCategory(category, extractedFields.title);
     trace.sub_category = subCat.subCategory;
+    trace.genre = subCat.genre || null;
+    trace.disposition = subCat.disposition || null;
+    trace.bundle_label = subCat.bundleLabel || null;
 
     if (subCat.reject) {
       return rejectWith(trace, 11, subCat.rejectReason,
@@ -759,9 +845,13 @@ function calculateOffer(product, hasCase = true, pricingMode = 'buyback', condit
 
   const offerCents = result.offer_cents;
   let status, color, label;
+  const bundleLabel = trace?.bundle_label || null;
+
   if (result.is_penny_tier) {
     status = 'penny'; color = 'amber';
-    label = `Bulk Add $${(offerCents / 100).toFixed(2)}`;
+    label = bundleLabel
+      ? `Bulk Add — ${bundleLabel}`
+      : `Bulk Add $${(offerCents / 100).toFixed(2)}`;
   } else if (offerCents >= 150) {
     status = 'accepted'; color = 'green'; label = "We'll Buy This!";
   } else {
@@ -776,6 +866,8 @@ function calculateOffer(product, hasCase = true, pricingMode = 'buyback', condit
     offerCents,
     offerDisplay: `$${(offerCents / 100).toFixed(2)}`,
     tier: result.tier,
+    genre: trace?.genre || null,
+    bundleLabel: bundleLabel,
     _debug,
   };
 }
@@ -902,6 +994,7 @@ module.exports = {
   isGated,
   lookupFBAFee,
   classifySubCategory,
+  detectGenre,
   newTrace,
   CATEGORY_BLACKLIST,
   CATEGORY_MIN_PRICE_CENTS,
