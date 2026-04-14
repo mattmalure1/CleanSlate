@@ -81,8 +81,56 @@ export default function BarcodeScanner({ onScan, onClose }) {
     }
   }
 
+  // ── Client-side barcode pre-filter ──
+  // Instantly skip non-media barcodes before wasting a 2-3s API call.
+  // Media barcodes have known UPC/ISBN prefix patterns:
+  //   - ISBN-13: starts with 978 or 979
+  //   - UPC-A (12 digits): most media starts with 0 (books/media), 6, or 7
+  //   - EAN-13: various, but grocery/household items often start with 2,4,5
+  // We can't be 100% sure from prefix alone, so we only block the obvious
+  // non-media prefixes (grocery, health, household products).
+  function isLikelyMedia(code) {
+    const c = code.replace(/\D/g, '');
+    // ISBN-13 — always media
+    if (c.startsWith('978') || c.startsWith('979')) return true;
+    // Short codes (< 10 digits) — let them through, could be anything
+    if (c.length < 10) return true;
+    // Known non-media GS1 prefixes for US products:
+    // 030-039: drugs/health
+    // 040-049: grocery (many)
+    // 050-059: coupons/grocery
+    // 070-079: grocery
+    // These almost never contain media. But 012, 013, 014, 019, 020, 024, 025
+    // ARE common media prefixes (Fox, Universal, Warner, etc.)
+    // So we only block the really obvious grocery ranges:
+    const p3 = c.slice(0, 3);
+    const groceryPrefixes = [
+      '030','031','032','033','034','035','036','037','038','039', // drugs/health
+      '040','041','042','043','044','045','046','047','048','049', // grocery
+      '050','051','052','053','054','055','056','057','058','059', // coupons
+      '070','071','072','073','074','075','076','077','078','079', // grocery
+      '080','081','082','083','084','085','086','087','088','089', // grocery
+    ];
+    if (groceryPrefixes.includes(p3)) return false;
+    // Everything else — let it through to Keepa
+    return true;
+  }
+
   // ── Non-blocking API lookup with session cache ──
   function lookupCode(code) {
+    // Instant skip for obvious non-media barcodes (grocery, health, household)
+    if (!isLikelyMedia(code)) {
+      addResult({
+        id: crypto.randomUUID(), code,
+        title: 'Not a media item',
+        status: 'rejected',
+        offerDisplay: '$0.00',
+        offerCents: 0,
+        message: 'We only buy books, DVDs, CDs, and video games.',
+      });
+      return;
+    }
+
     if (sessionCache.has(code)) {
       addResult({ id: crypto.randomUUID(), code, ...sessionCache.get(code) });
       return;
