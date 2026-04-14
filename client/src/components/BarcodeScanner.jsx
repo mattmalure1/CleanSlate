@@ -220,8 +220,9 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
     setItems(prev => prev.filter(i => i.id !== id));
   }
 
-  const acceptedCount = items.filter(i => i.status === 'accepted' || i.status === 'low').length;
-  const totalCents = items.filter(i => i.status === 'accepted' || i.status === 'low').reduce((s, i) => s + (i.offerCents || 0), 0);
+  const isOffer = (i) => i.status === 'accepted' || i.status === 'low' || i.status === 'penny';
+  const acceptedCount = items.filter(isOffer).length;
+  const totalCents = items.filter(isOffer).reduce((s, i) => s + (i.offerCents || 0), 0);
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Barcode scanner" className="fixed inset-0 z-50 bg-black flex flex-col">
