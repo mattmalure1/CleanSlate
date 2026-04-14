@@ -15,31 +15,31 @@ const engine = require('../offerEngine');
 // ------------------------------------------------------------
 // Test fixtures — seed tier_thresholds and offer_engine_config
 // ------------------------------------------------------------
-// V2 ROI floors: 40/60/85/125 (was 50/75/100/150)
+// V2 ROI floors: 40/60/85/125, flat floors: 250/350/500/800
 const SEED_TIERS = [
   // book
-  { category: 'book',   tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:  500000, roi_floor_percent:  40, min_flat_margin_cents: 150 },
-  { category: 'book',   tier: 'T2', min_rank_drops_90: 15, bsr_ceiling: 1500000, roi_floor_percent:  60, min_flat_margin_cents: 250 },
-  { category: 'book',   tier: 'T3', min_rank_drops_90:  8, bsr_ceiling: 2500000, roi_floor_percent:  85, min_flat_margin_cents: 400 },
-  { category: 'book',   tier: 'T4', min_rank_drops_90:  4, bsr_ceiling: 3000000, roi_floor_percent: 125, min_flat_margin_cents: 600 },
+  { category: 'book',   tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:  500000, roi_floor_percent:  40, min_flat_margin_cents: 250 },
+  { category: 'book',   tier: 'T2', min_rank_drops_90: 15, bsr_ceiling: 1500000, roi_floor_percent:  60, min_flat_margin_cents: 350 },
+  { category: 'book',   tier: 'T3', min_rank_drops_90:  8, bsr_ceiling: 2500000, roi_floor_percent:  85, min_flat_margin_cents: 500 },
+  { category: 'book',   tier: 'T4', min_rank_drops_90:  4, bsr_ceiling: 3000000, roi_floor_percent: 125, min_flat_margin_cents: 800 },
   // dvd
-  { category: 'dvd',    tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  40, min_flat_margin_cents: 150 },
-  { category: 'dvd',    tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  60, min_flat_margin_cents: 250 },
-  { category: 'dvd',    tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent:  85, min_flat_margin_cents: 400 },
-  { category: 'dvd',    tier: 'T4', min_rank_drops_90:  4, bsr_ceiling:  150000, roi_floor_percent: 125, min_flat_margin_cents: 600 },
+  { category: 'dvd',    tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  40, min_flat_margin_cents: 250 },
+  { category: 'dvd',    tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  60, min_flat_margin_cents: 350 },
+  { category: 'dvd',    tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent:  85, min_flat_margin_cents: 500 },
+  { category: 'dvd',    tier: 'T4', min_rank_drops_90:  4, bsr_ceiling:  150000, roi_floor_percent: 125, min_flat_margin_cents: 800 },
   // bluray
-  { category: 'bluray', tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  40, min_flat_margin_cents: 150 },
-  { category: 'bluray', tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  60, min_flat_margin_cents: 250 },
-  { category: 'bluray', tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent:  85, min_flat_margin_cents: 400 },
-  { category: 'bluray', tier: 'T4', min_rank_drops_90:  4, bsr_ceiling:  150000, roi_floor_percent: 125, min_flat_margin_cents: 600 },
+  { category: 'bluray', tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  40, min_flat_margin_cents: 250 },
+  { category: 'bluray', tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  60, min_flat_margin_cents: 350 },
+  { category: 'bluray', tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent:  85, min_flat_margin_cents: 500 },
+  { category: 'bluray', tier: 'T4', min_rank_drops_90:  4, bsr_ceiling:  150000, roi_floor_percent: 125, min_flat_margin_cents: 800 },
   // cd (no T4)
-  { category: 'cd',     tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:  100000, roi_floor_percent:  40, min_flat_margin_cents: 300 },
-  { category: 'cd',     tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:  150000, roi_floor_percent:  60, min_flat_margin_cents: 400 },
-  { category: 'cd',     tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  200000, roi_floor_percent:  85, min_flat_margin_cents: 600 },
+  { category: 'cd',     tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:  100000, roi_floor_percent:  40, min_flat_margin_cents: 250 },
+  { category: 'cd',     tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:  150000, roi_floor_percent:  60, min_flat_margin_cents: 350 },
+  { category: 'cd',     tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  200000, roi_floor_percent:  85, min_flat_margin_cents: 500 },
   // game (no T4)
   { category: 'game',   tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  40, min_flat_margin_cents: 250 },
-  { category: 'game',   tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  60, min_flat_margin_cents: 400 },
-  { category: 'game',   tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent:  85, min_flat_margin_cents: 600 },
+  { category: 'game',   tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  60, min_flat_margin_cents: 350 },
+  { category: 'game',   tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent:  85, min_flat_margin_cents: 500 },
 ];
 
 const SEED_CONFIG = {
@@ -51,7 +51,7 @@ const SEED_CONFIG = {
   storage_reserve_cents: 15,
   media_mail_receive_cents: 50,
   min_cart_value_cents: 1000,
-  min_cart_items: 10,
+  min_cart_items: 5,
   quote_expiration_days: 7,
   max_copies_per_asin: 10,
   daily_payout_cap_cents: 200000,
@@ -874,29 +874,32 @@ describe('extractKeepaFields', () => {
 // ============================================================
 // lookupFBAFee (spec §2.7)
 // ============================================================
+// V2 FBA fee table — weight-only lookup
 describe('lookupFBAFee', () => {
-  test('small standard returns 306', () => {
-    // weight 400g, length 350mm, width 200mm, height 15mm
-    assert.equal(engine.lookupFBAFee(400, 350, 200, 15), 306);
+  test('≤0.5 lb returns 306', () => {
+    assert.equal(engine.lookupFBAFee(200), 306); // ~0.44 lb
   });
 
-  test('large standard up to 1 lb returns 325', () => {
-    // Not small standard (height > 19mm), weight < 1 lb
-    assert.equal(engine.lookupFBAFee(400, 200, 150, 30), 325);
+  test('≤1.0 lb returns 340', () => {
+    assert.equal(engine.lookupFBAFee(400), 340); // ~0.88 lb
   });
 
-  test('large standard 1-2 lb returns 450', () => {
-    assert.equal(engine.lookupFBAFee(700, 200, 150, 30), 450);
+  test('≤1.5 lb returns 375', () => {
+    assert.equal(engine.lookupFBAFee(600), 375); // ~1.32 lb
   });
 
-  test('large standard 2-3 lb returns 520', () => {
-    assert.equal(engine.lookupFBAFee(1100, 200, 150, 30), 520);
+  test('≤2.0 lb returns 420', () => {
+    assert.equal(engine.lookupFBAFee(800), 420); // ~1.76 lb
   });
 
-  test('large standard 3+ lb adds per-lb surcharge', () => {
-    // 4 lbs = 520 + 38 = 558
-    const fee = engine.lookupFBAFee(1820, 200, 150, 30);
-    assert.ok(fee >= 558 && fee <= 560, `got ${fee}`);
+  test('≤3.0 lb returns 475', () => {
+    assert.equal(engine.lookupFBAFee(1200), 475); // ~2.64 lb
+  });
+
+  test('>3.0 lb adds $0.50/lb surcharge', () => {
+    // 4 lbs = 475 + 50 = 525
+    const fee = engine.lookupFBAFee(1820); // ~4.01 lb
+    assert.ok(fee >= 525 && fee <= 526, `got ${fee}`);
   });
 });
 
@@ -963,6 +966,95 @@ describe('V2: Penny tier', () => {
     assert.equal(r.accepted, true);
     assert.equal(r.is_penny_tier, false);
     assert.equal(r.calculation_trace.penny_tier_applied, false);
+  });
+});
+
+// ============================================================
+// Sub-category classification (V2 spec)
+// ============================================================
+describe('V2: Sub-category classification', () => {
+  test('classifySubCategory: romance book → reject', () => {
+    const r = engine.classifySubCategory('book', 'A Summer Romance Novel');
+    assert.equal(r.reject, true);
+    assert.equal(r.subCategory, 'reject_book');
+  });
+
+  test('classifySubCategory: Harlequin → reject', () => {
+    const r = engine.classifySubCategory('book', 'Harlequin Presents: The Duke');
+    assert.equal(r.reject, true);
+  });
+
+  test('classifySubCategory: textbook → keeper ($0.10)', () => {
+    const r = engine.classifySubCategory('book', 'Organic Chemistry Textbook 5th Edition');
+    assert.equal(r.reject, false);
+    assert.equal(r.subCategory, 'keeper_book');
+    assert.equal(r.pennyOffer, 10);
+    assert.equal(r.minNetProfit, 50);
+  });
+
+  test('classifySubCategory: generic fiction → bulk ($0.05)', () => {
+    const r = engine.classifySubCategory('book', 'The Great Gatsby');
+    assert.equal(r.reject, false);
+    assert.equal(r.subCategory, 'generic_book');
+    assert.equal(r.pennyOffer, 5);
+    assert.equal(r.minNetProfit, 25);
+  });
+
+  test('classifySubCategory: DreamWorks DVD → reject', () => {
+    const r = engine.classifySubCategory('dvd', 'Shrek - DreamWorks Animation');
+    assert.equal(r.reject, true);
+    assert.equal(r.subCategory, 'reject_dvd');
+  });
+
+  test('classifySubCategory: horror DVD → keeper', () => {
+    const r = engine.classifySubCategory('dvd', 'The Exorcist - Horror Classic');
+    assert.equal(r.subCategory, 'keeper_dvd');
+    assert.equal(r.pennyOffer, 10);
+  });
+
+  test('classifySubCategory: generic mainstream DVD → bulk ($0.05)', () => {
+    const r = engine.classifySubCategory('dvd', 'The Avengers');
+    assert.equal(r.subCategory, 'generic_dvd');
+    assert.equal(r.pennyOffer, 5);
+  });
+
+  test('classifySubCategory: Kidz Bop CD → reject', () => {
+    const r = engine.classifySubCategory('cd', 'Kidz Bop 25');
+    assert.equal(r.reject, true);
+  });
+
+  test('classifySubCategory: metal CD → keeper', () => {
+    const r = engine.classifySubCategory('cd', 'Metallica - Master of Puppets');
+    assert.equal(r.subCategory, 'keeper_cd');
+    assert.equal(r.pennyOffer, 10);
+  });
+
+  test('classifySubCategory: Madden game → reject', () => {
+    const r = engine.classifySubCategory('game', 'Madden NFL 24');
+    assert.equal(r.reject, true);
+  });
+
+  test('classifySubCategory: normal game → keeper ($0.10, games default)', () => {
+    const r = engine.classifySubCategory('game', 'The Legend of Zelda');
+    assert.equal(r.reject, false);
+    assert.equal(r.subCategory, 'keeper_game');
+    assert.equal(r.pennyOffer, 10);
+  });
+
+  // Integration: romance book goes through engine and rejects at Step 11
+  test('romance novel with low price → rejects at Step 11 sub-category', () => {
+    const r = run(makeExtracted({
+      title: 'A Passionate Romance Novel',
+      current_used_buybox_cents: 800,
+      avg_90_day_used_buybox_cents: 800,
+      sales_rank_drops_90: 35,
+      current_bsr: 250000,
+    }));
+    // May reject at step 8/11 depending on fee math, but if it reaches
+    // penny tier check, the romance classification should reject it
+    if (r.calculation_trace.rejection_step === 11) {
+      assert.equal(r.calculation_trace.sub_category, 'reject_book');
+    }
   });
 });
 

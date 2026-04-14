@@ -78,7 +78,7 @@ export default function CheckoutPage() {
     }
   }
 
-  const MIN_ORDER_CENTS = 800; // $8.00 minimum order
+  const MIN_ORDER_CENTS = 1000; // V2: $10.00 minimum order
   const meetsMinimum = totalCents >= MIN_ORDER_CENTS;
 
   if (items.length === 0) {
@@ -167,7 +167,7 @@ export default function CheckoutPage() {
         </div>
         {!meetsMinimum && (
           <div className="mt-3 bg-warning-light border border-warning/20 rounded-[var(--radius-md)] px-4 py-3 text-sm text-warning font-medium">
-            Minimum order is $8.00 — add more items to checkout. You need ${((MIN_ORDER_CENTS - totalCents) / 100).toFixed(2)} more.
+            Minimum order is $10.00 — add more items to checkout. You need ${((MIN_ORDER_CENTS - totalCents) / 100).toFixed(2)} more.
           </div>
         )}
       </section>

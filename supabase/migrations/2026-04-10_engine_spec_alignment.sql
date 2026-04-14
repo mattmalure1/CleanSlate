@@ -74,33 +74,31 @@ create table if not exists tier_thresholds (
 alter table tier_thresholds enable row level security;
 create policy "Service role full access" on tier_thresholds for all using (true) with check (true);
 
--- Seed per V2 spec — ROI floors lowered to 40/60/85/125 to accept more inventory
--- while still protecting margin. Penny tier ($0.10 at $0.50+ net profit) handles
--- items that still fail these floors.
+-- V2 spec: ROI floors 40/60/85/125, flat floors $2.50/$3.50/$5.00/$8.00
 insert into tier_thresholds (category, tier, min_rank_drops_90, bsr_ceiling, roi_floor_percent, min_flat_margin_cents) values
   -- books
-  ('book',   'T1', 30,  500000,  40, 150),
-  ('book',   'T2', 15, 1500000,  60, 250),
-  ('book',   'T3',  8, 2500000,  85, 400),
-  ('book',   'T4',  4, 3000000, 125, 600),
+  ('book',   'T1', 30,  500000,  40, 250),
+  ('book',   'T2', 15, 1500000,  60, 350),
+  ('book',   'T3',  8, 2500000,  85, 500),
+  ('book',   'T4',  4, 3000000, 125, 800),
   -- dvds
-  ('dvd',    'T1', 30,   50000,  40, 150),
-  ('dvd',    'T2', 15,   80000,  60, 250),
-  ('dvd',    'T3',  8,  120000,  85, 400),
-  ('dvd',    'T4',  4,  150000, 125, 600),
+  ('dvd',    'T1', 30,   50000,  40, 250),
+  ('dvd',    'T2', 15,   80000,  60, 350),
+  ('dvd',    'T3',  8,  120000,  85, 500),
+  ('dvd',    'T4',  4,  150000, 125, 800),
   -- blu-rays
-  ('bluray', 'T1', 30,   50000,  40, 150),
-  ('bluray', 'T2', 15,   80000,  60, 250),
-  ('bluray', 'T3',  8,  120000,  85, 400),
-  ('bluray', 'T4',  4,  150000, 125, 600),
+  ('bluray', 'T1', 30,   50000,  40, 250),
+  ('bluray', 'T2', 15,   80000,  60, 350),
+  ('bluray', 'T3',  8,  120000,  85, 500),
+  ('bluray', 'T4',  4,  150000, 125, 800),
   -- cds (no T4 — CD market is declining)
-  ('cd',     'T1', 30,  100000,  40, 300),
-  ('cd',     'T2', 15,  150000,  60, 400),
-  ('cd',     'T3',  8,  200000,  85, 600),
+  ('cd',     'T1', 30,  100000,  40, 250),
+  ('cd',     'T2', 15,  150000,  60, 350),
+  ('cd',     'T3',  8,  200000,  85, 500),
   -- games (no T4 — higher capital exposure)
   ('game',   'T1', 30,   50000,  40, 250),
-  ('game',   'T2', 15,   80000,  60, 400),
-  ('game',   'T3',  8,  120000,  85, 600)
+  ('game',   'T2', 15,   80000,  60, 350),
+  ('game',   'T3',  8,  120000,  85, 500)
 on conflict (category, tier) do nothing;
 
 -- ------------------------------------------------------------
@@ -128,7 +126,7 @@ insert into offer_engine_config (key, value, description) values
   ('storage_reserve_cents',            to_jsonb(15),     'Monthly storage reserve per unit'),
   ('media_mail_receive_cents',         to_jsonb(50),     'Amortized media mail receive cost'),
   ('min_cart_value_cents',             to_jsonb(1000),   'Minimum cart value to checkout'),
-  ('min_cart_items',                   to_jsonb(10),     'Minimum item count to checkout'),
+  ('min_cart_items',                   to_jsonb(5),      'V2: minimum 5 items to checkout'),
   ('quote_expiration_days',            to_jsonb(7),      'Days until a quote expires'),
   ('max_copies_per_asin',              to_jsonb(10),     'Hard cap on copies per ASIN in flight'),
   ('daily_payout_cap_cents',           to_jsonb(200000), '$2000 daily payout cap'),

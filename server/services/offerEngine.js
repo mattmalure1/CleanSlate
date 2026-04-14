@@ -58,6 +58,97 @@ const MAX_HEIGHT_MM = 203; // 8 in
 const MAX_WEIGHT_G  = 9072; // 20 lbs
 
 // ------------------------------------------------------------
+// Sub-category classifier (V2 spec)
+//
+// Classifies items into keeper/bulk/reject sub-categories based
+// on title keywords and category. This determines:
+//   - Whether the item can enter penny tier at all (rejects can't)
+//   - The penny offer amount ($0.10 keeper vs $0.05 bulk)
+//   - The minimum net profit required ($0.50 vs $0.25)
+// Runs after category detection but before pricing math.
+// ------------------------------------------------------------
+
+const SUB_CAT_RULES = {
+  book: {
+    reject: [/romance/i, /reader'?s?\s*digest/i, /harlequin/i],
+    keeper: [/textbook/i, /\bedition\b/i, /engineering/i, /medical/i, /theology/i,
+             /\bd\s*&\s*d\b/i, /dungeons/i, /programming/i, /computer science/i,
+             /nursing/i, /anatomy/i, /physics/i, /chemistry/i, /calculus/i,
+             /law\b/i, /legal/i],
+    // default: generic_book ($0.05)
+  },
+  dvd: {
+    reject: [/dreamworks/i, /nickelodeon/i, /nick\s*jr/i, /paw\s*patrol/i,
+             /sports\s*highlight/i, /nfl\s*films/i, /espn/i],
+    keeper: [/criterion/i, /arrow\s*video/i, /scream\s*factory/i, /horror/i,
+             /anime/i, /disney/i, /tv\s*(series|season|box\s*set|complete)/i,
+             /workout/i, /fitness/i, /christian/i, /4k\s*uhd/i, /steelbook/i,
+             /collector/i],
+    // default: bulk_dvd ($0.05)
+  },
+  bluray: {
+    reject: [/dreamworks/i, /nickelodeon/i, /nick\s*jr/i, /paw\s*patrol/i,
+             /sports\s*highlight/i],
+    keeper: [/criterion/i, /arrow\s*video/i, /scream\s*factory/i, /horror/i,
+             /anime/i, /disney/i, /tv\s*(series|season|box\s*set|complete)/i,
+             /4k\s*uhd/i, /steelbook/i, /collector/i],
+    // default: bulk_dvd ($0.05)
+  },
+  cd: {
+    reject: [/now\s*that'?s?\s*what\s*i\s*call/i, /kidz\s*bop/i,
+             /various\s*artists/i, /top\s*40/i, /NOW\s*\d+/i],
+    keeper: [/metal/i, /gospel/i, /christian/i, /soundtrack/i, /classical/i,
+             /jazz/i, /foreign\s*language/i, /box\s*set/i, /promo/i,
+             /import/i, /limited/i],
+    // default: bulk_cd ($0.05)
+  },
+  game: {
+    reject: [/\b(madden|nba\s*2k|fifa|nhl|mlb|wwe|pes|pro\s*evolution)\b/i,
+             /\bdemo\b/i, /\bpromo\b/i, /sports\s*(game|champion)/i],
+    keeper: [], // default for games is keeper ($0.10 — games hold value)
+    defaultIsKeeper: true, // games default to keeper, not bulk
+  },
+};
+
+function classifySubCategory(category, title) {
+  const rules = SUB_CAT_RULES[category];
+  if (!rules) return { subCategory: 'unknown', pennyOffer: 10, minNetProfit: 50, reject: false };
+
+  const text = (title || '').toLowerCase();
+
+  // Check reject patterns first
+  for (const pattern of rules.reject) {
+    if (pattern.test(text)) {
+      return {
+        subCategory: `reject_${category}`,
+        reject: true,
+        rejectReason: `Sub-category not accepted (${category})`,
+        pennyOffer: 0,
+        minNetProfit: 0,
+      };
+    }
+  }
+
+  // Check keeper patterns
+  for (const pattern of rules.keeper) {
+    if (pattern.test(text)) {
+      return {
+        subCategory: `keeper_${category}`,
+        pennyOffer: 10,   // $0.10
+        minNetProfit: 50,  // $0.50
+        reject: false,
+      };
+    }
+  }
+
+  // Default: keeper for games, bulk for everything else
+  if (rules.defaultIsKeeper) {
+    return { subCategory: `keeper_${category}`, pennyOffer: 10, minNetProfit: 50, reject: false };
+  }
+  return { subCategory: `generic_${category}`, pennyOffer: 5, minNetProfit: 25, reject: false };
+}
+
+// ------------------------------------------------------------
 // Deprecated-param warning with dedup by caller stack frame.
 // ------------------------------------------------------------
 const _warnedCallers = new Set();
@@ -194,23 +285,15 @@ function detectCategory(categoryTree) {
 // FBA fee lookup (spec §2.7)
 // Returns cents. Assumes caller already filtered oversize at Step 3.
 // ------------------------------------------------------------
-function lookupFBAFee(weight_g, length_mm, width_mm, height_mm) {
+// V2 FBA fee table — weight-based lookup per V2 spec
+function lookupFBAFee(weight_g) {
   const weight_lbs = weight_g / 453.592;
-
-  // Small Standard (spec §2.7)
-  const isSmallStandard =
-    weight_g <= 425 &&
-    length_mm != null && length_mm <= 381 &&
-    width_mm  != null && width_mm  <= 305 &&
-    height_mm != null && height_mm <= 19;
-
-  if (isSmallStandard) return 306;
-
-  // Large Standard tiers (spec §2.7 MVP values)
-  if (weight_lbs <= 1)  return 325;
-  if (weight_lbs <= 2)  return 450;
-  if (weight_lbs <= 3)  return 520;
-  return 520 + Math.ceil((weight_lbs - 3) * 38);
+  if (weight_lbs <= 0.5) return 306;
+  if (weight_lbs <= 1.0) return 340;
+  if (weight_lbs <= 1.5) return 375;
+  if (weight_lbs <= 2.0) return 420;
+  if (weight_lbs <= 3.0) return 475;
+  return 475 + Math.ceil((weight_lbs - 3) * 50);
 }
 
 // ------------------------------------------------------------
@@ -526,12 +609,7 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
 
   const referralFee = Math.floor(workingPrice * referralRate);
 
-  const fbaFulfillmentFee = lookupFBAFee(
-    extractedFields.package_weight_g,
-    extractedFields.package_length_mm,
-    extractedFields.package_width_mm,
-    extractedFields.package_height_mm
-  );
+  const fbaFulfillmentFee = lookupFBAFee(extractedFields.package_weight_g);
 
   const weightLbs = extractedFields.package_weight_g / 453.592;
   const inboundShipping = Math.max(25, Math.floor(weightLbs * inboundPerLb));
@@ -583,23 +661,28 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   const finalOffer = Math.floor(withPenalties / 5) * 5; // round down to nearest $0.05
   trace.final_offer_cents = finalOffer;
 
-  // ===== STEP 11: Sanity checks + penny tier fallback =====
+  // ===== STEP 11: Sanity checks + sub-category penny tier =====
   if (finalOffer < 25) {
-    // V2 Penny tier: if standard ROI math fails but we'd still net $0.50+
-    // profit at a $0.10 offer, accept as penny tier. These are "bulk add"
-    // items that ride along with featured items in the same shipping box.
-    // The customer sees them as $0.10 bonus adds, not featured items.
-    // Penny items are capped at 50% of cart value on the frontend.
-    const PENNY_OFFER_CENTS = 10;
-    const PENNY_MIN_NET_PROFIT_CENTS = 50;
-    const pennyProfit = netResale - PENNY_OFFER_CENTS;
-    if (pennyProfit >= PENNY_MIN_NET_PROFIT_CENTS) {
-      trace.final_offer_cents = PENNY_OFFER_CENTS;
-      trace.penny_tier_applied = true;
-      trace.penny_net_profit_cents = pennyProfit;
-      return acceptWith(trace, PENNY_OFFER_CENTS, assignedTier.tier, true);
+    // V2: classify sub-category to determine penny offer ($0.10 keeper vs
+    // $0.05 bulk) and check for reject sub-categories (romance, sports games, etc.)
+    const subCat = classifySubCategory(category, extractedFields.title);
+    trace.sub_category = subCat.subCategory;
+
+    if (subCat.reject) {
+      return rejectWith(trace, 11, subCat.rejectReason,
+        `sub_category=${subCat.subCategory}`);
     }
-    return rejectWith(trace, 11, 'Margin too thin', `final_offer=${finalOffer}, penny_profit=${pennyProfit}`);
+
+    const pennyProfit = netResale - subCat.pennyOffer;
+    if (pennyProfit >= subCat.minNetProfit) {
+      trace.final_offer_cents = subCat.pennyOffer;
+      trace.penny_tier_applied = true;
+      trace.penny_offer_cents = subCat.pennyOffer;
+      trace.penny_net_profit_cents = pennyProfit;
+      return acceptWith(trace, subCat.pennyOffer, assignedTier.tier, true);
+    }
+    return rejectWith(trace, 11, 'Margin too thin',
+      `final_offer=${finalOffer}, penny=${subCat.pennyOffer}, penny_profit=${pennyProfit}`);
   }
   if (finalOffer > workingPrice * 0.50) {
     console.error('[offerEngine] Calculation error — offer exceeds 50% of working price', {
@@ -610,6 +693,7 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   }
 
   trace.penny_tier_applied = false;
+  trace.sub_category = null;
   return acceptWith(trace, finalOffer, assignedTier.tier, false);
 }
 
@@ -676,7 +760,8 @@ function calculateOffer(product, hasCase = true, pricingMode = 'buyback', condit
   const offerCents = result.offer_cents;
   let status, color, label;
   if (result.is_penny_tier) {
-    status = 'penny'; color = 'amber'; label = 'Bulk Add $0.10';
+    status = 'penny'; color = 'amber';
+    label = `Bulk Add $${(offerCents / 100).toFixed(2)}`;
   } else if (offerCents >= 150) {
     status = 'accepted'; color = 'green'; label = "We'll Buy This!";
   } else {
@@ -816,6 +901,7 @@ module.exports = {
   detectCategory,
   isGated,
   lookupFBAFee,
+  classifySubCategory,
   newTrace,
   CATEGORY_BLACKLIST,
   CATEGORY_MIN_PRICE_CENTS,

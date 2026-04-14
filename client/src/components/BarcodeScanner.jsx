@@ -61,7 +61,7 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         tier: isPenny ? 'penny' : 'standard',
       });
       if (isPenny) {
-        showFlash('penny', `$0.10 bulk add — ${item.title || 'Added!'}`);
+        showFlash('penny', `${item.offerDisplay} bulk add — ${item.title || 'Added!'}`);
         playTone(550, 0.10); // mid tone for penny
       } else {
         showFlash('accept', `${item.offerDisplay} — ${item.title || 'Added!'}`);
