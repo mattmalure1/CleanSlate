@@ -114,3 +114,11 @@ h1, h2, h3, h4, h5, h6 {
   white-space: nowrap;
   border-width: 0;
 }
+
+/* Scanner accept/reject flash animation */
+@keyframes fadeInOut {
+  0%   { opacity: 0; transform: translateY(-10px) scale(0.95); }
+  10%  { opacity: 1; transform: translateY(0) scale(1); }
+  75%  { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-5px) scale(0.98); }
+}

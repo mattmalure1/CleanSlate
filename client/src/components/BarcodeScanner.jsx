@@ -16,15 +16,36 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
   const [ready, setReady] = useState(false);
   const [items, setItems] = useState([]);
   const [pendingLookups, setPendingLookups] = useState(new Set());
+  // Flash indicator: { type: 'accept' | 'reject', text, key }
+  const [flash, setFlash] = useState(null);
+  const flashTimer = useRef(null);
   const recentScans = useRef(new Set());
   const stopped = useRef(false);
 
   onScanRef.current = onScan;
   onCloseRef.current = onClose;
 
+  function showFlash(type, text) {
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    setFlash({ type, text, key: Date.now() });
+    flashTimer.current = setTimeout(() => setFlash(null), 1800);
+  }
+
+  function playTone(freq, duration = 0.08) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = freq; g.gain.value = 0.15;
+      o.start(); o.stop(ctx.currentTime + duration);
+    } catch {}
+  }
+
   function addResult(item) {
     setItems(prev => [item, ...prev]);
-    if (item.status === 'accepted' || item.status === 'low') {
+    const ok = item.status === 'accepted' || item.status === 'low';
+    if (ok) {
       addItem({
         asin: item.asin,
         title: item.title,
@@ -37,6 +58,11 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         color: item.color,
         label: item.label,
       });
+      showFlash('accept', `${item.offerDisplay} — ${item.title || 'Added!'}`);
+      playTone(880, 0.08); // high beep
+    } else {
+      showFlash('reject', item.message || item.reason || 'Pass');
+      playTone(330, 0.15); // low tone
     }
   }
 
@@ -136,17 +162,9 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
             recentScans.current.add(text);
             setTimeout(() => recentScans.current.delete(text), 4000);
 
-            // Beep
-            try {
-              const ctx = new (window.AudioContext || window.webkitAudioContext)();
-              const o = ctx.createOscillator();
-              const g = ctx.createGain();
-              o.connect(g); g.connect(ctx.destination);
-              o.frequency.value = 880; g.gain.value = 0.15;
-              o.start(); o.stop(ctx.currentTime + 0.08);
-            } catch {}
+            // Quick scan-detected beep (result beeps come later via addResult)
+            playTone(660, 0.05);
 
-            // Always lookup (rapid behavior built-in)
             lookupCode(text);
             onScanRef.current(text);
           },
@@ -232,6 +250,24 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
             <Loader2 size={14} className="animate-spin" />
             Looking up {pendingLookups.size === 1 ? [...pendingLookups][0] : `${pendingLookups.size} items`}...
+          </div>
+        )}
+
+        {/* Accept/reject flash indicator — shows briefly when result arrives */}
+        {flash && (
+          <div
+            key={flash.key}
+            className={`absolute inset-x-4 top-14 z-30 rounded-xl px-5 py-3 flex items-center gap-3 shadow-2xl animate-[fadeInOut_1.8s_ease-in-out_forwards] ${
+              flash.type === 'accept'
+                ? 'bg-green-500/90 border-2 border-green-300'
+                : 'bg-red-500/90 border-2 border-red-300'
+            }`}
+          >
+            {flash.type === 'accept'
+              ? <Check size={22} className="text-white flex-shrink-0" />
+              : <X size={22} className="text-white flex-shrink-0" />
+            }
+            <span className="text-white text-sm font-semibold truncate">{flash.text}</span>
           </div>
         )}
 
