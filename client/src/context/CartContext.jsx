@@ -45,14 +45,27 @@ export function CartProvider({ children }) {
     setItems([]);
   }, []);
 
-  const totalCents = useMemo(
-    () => items.reduce((sum, item) => sum + (item.offerCents || 0), 0),
+  // V2: separate featured (standard/low) from penny (bulk add) totals.
+  // Penny items are capped at 50% of featured total.
+  const featuredCents = useMemo(
+    () => items.filter(i => i.tier !== 'penny').reduce((s, i) => s + (i.offerCents || 0), 0),
     [items]
   );
-
-  const totalDisplay = useMemo(() => {
-    return `$${(totalCents / 100).toFixed(2)}`;
-  }, [totalCents]);
+  const pennyRawCents = useMemo(
+    () => items.filter(i => i.tier === 'penny').reduce((s, i) => s + (i.offerCents || 0), 0),
+    [items]
+  );
+  const pennyCappedCents = useMemo(
+    () => Math.min(pennyRawCents, Math.floor(featuredCents * 0.5)),
+    [pennyRawCents, featuredCents]
+  );
+  const totalCents = featuredCents + pennyCappedCents;
+  const totalDisplay = `$${(totalCents / 100).toFixed(2)}`;
+  const featuredDisplay = `$${(featuredCents / 100).toFixed(2)}`;
+  const pennyDisplay = `$${(pennyCappedCents / 100).toFixed(2)}`;
+  const pennyCount = items.filter(i => i.tier === 'penny').length;
+  const featuredCount = items.filter(i => i.tier !== 'penny').length;
+  const pennyCapped = pennyRawCents > pennyCappedCents;
 
   const itemCount = items.length;
 
@@ -66,8 +79,18 @@ export function CartProvider({ children }) {
       totalCents,
       totalDisplay,
       itemCount,
+      // V2 tier breakdown
+      featuredCents,
+      featuredDisplay,
+      featuredCount,
+      pennyCappedCents,
+      pennyDisplay,
+      pennyCount,
+      pennyCapped,
     }),
-    [items, addItem, removeItem, updateItemCase, clearCart, totalCents, totalDisplay, itemCount]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items, addItem, removeItem, updateItemCase, clearCart, totalCents, totalDisplay, itemCount,
+     featuredCents, pennyCappedCents, pennyCount, pennyCapped]
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

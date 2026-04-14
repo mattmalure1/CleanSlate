@@ -34,13 +34,17 @@ export default function QuoteCard({ data, onCaseToggle }) {
 
   const isAccepted = status === 'accepted';
   const isLow = status === 'low';
+  const isPenny = status === 'penny';
   const isRejected = status === 'rejected';
+  const isOffer = isAccepted || isLow || isPenny;
 
   const statusStyles = isAccepted
     ? 'bg-accept-light border-accept/20'
-    : isLow
-      ? 'bg-warning-light border-warning/20'
-      : 'bg-reject-light border-reject/20';
+    : isPenny
+      ? 'bg-amber-50 border-amber-300/40'
+      : isLow
+        ? 'bg-warning-light border-warning/20'
+        : 'bg-reject-light border-reject/20';
 
   function handleAdd() {
     addItem({
@@ -54,6 +58,7 @@ export default function QuoteCard({ data, onCaseToggle }) {
       hasCase,
       color,
       label,
+      tier: isPenny ? 'penny' : 'standard',
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
@@ -90,6 +95,14 @@ export default function QuoteCard({ data, onCaseToggle }) {
                 <XCircle size={18} />
                 <span className="text-sm font-semibold">Can't make an offer</span>
               </div>
+            ) : isPenny ? (
+              <>
+                <p className="text-2xl font-bold font-display text-amber-600">{offerDisplay}</p>
+                <div className="mt-1 flex items-center gap-1.5 text-amber-600 text-sm">
+                  <ShoppingCart size={15} />
+                  <span className="font-medium">Bulk add — ships free with your order</span>
+                </div>
+              </>
             ) : isLow ? (
               <>
                 <p className="text-2xl font-bold font-display text-text-primary">{offerDisplay}</p>
@@ -144,21 +157,25 @@ export default function QuoteCard({ data, onCaseToggle }) {
       )}
 
       {/* Add to Cart */}
-      {!isRejected && offerCents > 0 && (
+      {isOffer && offerCents > 0 && (
         <button
           onClick={handleAdd}
           disabled={added}
           className={`mt-4 w-full flex items-center justify-center gap-2 font-semibold text-sm py-3.5 rounded-[var(--radius-md)] min-h-[52px] cursor-pointer ${
-            added ? 'bg-accept text-white' : 'bg-brand-600 hover:bg-brand-700 text-white active:scale-[0.97]'
+            added
+              ? 'bg-accept text-white'
+              : isPenny
+                ? 'bg-amber-500 hover:bg-amber-600 text-white active:scale-[0.97]'
+                : 'bg-brand-600 hover:bg-brand-700 text-white active:scale-[0.97]'
           }`}
         >
           <ShoppingCart size={18} />
-          {added ? 'Added to Cart' : 'Add to Cart'}
+          {added ? 'Added!' : isPenny ? 'Bulk Add to Cart' : 'Add to Cart'}
         </button>
       )}
 
       {/* Why this price? */}
-      {!isRejected && offerCents > 0 && (
+      {isOffer && offerCents > 0 && (
         <div className="mt-3">
           <button
             onClick={() => setShowWhy(!showWhy)}

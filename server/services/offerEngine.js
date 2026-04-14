@@ -310,11 +310,12 @@ function rejectWith(trace, step, reason, detail = null) {
   };
 }
 
-function acceptWith(trace, offerCents, tier) {
+function acceptWith(trace, offerCents, tier, isPennyTier = false) {
   return {
     accepted: true,
     offer_cents: offerCents,
     tier,
+    is_penny_tier: isPennyTier,
     calculation_trace: trace,
     keepa_data_timestamp: new Date(),
   };
@@ -582,9 +583,23 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   const finalOffer = Math.floor(withPenalties / 5) * 5; // round down to nearest $0.05
   trace.final_offer_cents = finalOffer;
 
-  // ===== STEP 11: Sanity checks =====
+  // ===== STEP 11: Sanity checks + penny tier fallback =====
   if (finalOffer < 25) {
-    return rejectWith(trace, 11, 'Margin too thin', `final_offer=${finalOffer}`);
+    // V2 Penny tier: if standard ROI math fails but we'd still net $0.50+
+    // profit at a $0.10 offer, accept as penny tier. These are "bulk add"
+    // items that ride along with featured items in the same shipping box.
+    // The customer sees them as $0.10 bonus adds, not featured items.
+    // Penny items are capped at 50% of cart value on the frontend.
+    const PENNY_OFFER_CENTS = 10;
+    const PENNY_MIN_NET_PROFIT_CENTS = 50;
+    const pennyProfit = netResale - PENNY_OFFER_CENTS;
+    if (pennyProfit >= PENNY_MIN_NET_PROFIT_CENTS) {
+      trace.final_offer_cents = PENNY_OFFER_CENTS;
+      trace.penny_tier_applied = true;
+      trace.penny_net_profit_cents = pennyProfit;
+      return acceptWith(trace, PENNY_OFFER_CENTS, assignedTier.tier, true);
+    }
+    return rejectWith(trace, 11, 'Margin too thin', `final_offer=${finalOffer}, penny_profit=${pennyProfit}`);
   }
   if (finalOffer > workingPrice * 0.50) {
     console.error('[offerEngine] Calculation error — offer exceeds 50% of working price', {
@@ -594,7 +609,8 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
       `offer=${finalOffer} > 50%_of_${workingPrice}`);
   }
 
-  return acceptWith(trace, finalOffer, assignedTier.tier);
+  trace.penny_tier_applied = false;
+  return acceptWith(trace, finalOffer, assignedTier.tier, false);
 }
 
 // ------------------------------------------------------------
@@ -659,7 +675,9 @@ function calculateOffer(product, hasCase = true, pricingMode = 'buyback', condit
 
   const offerCents = result.offer_cents;
   let status, color, label;
-  if (offerCents >= 150) {
+  if (result.is_penny_tier) {
+    status = 'penny'; color = 'amber'; label = 'Bulk Add $0.10';
+  } else if (offerCents >= 150) {
     status = 'accepted'; color = 'green'; label = "We'll Buy This!";
   } else {
     status = 'low'; color = 'yellow'; label = 'Low Offer';

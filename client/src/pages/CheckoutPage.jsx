@@ -5,7 +5,10 @@ import { useCart } from '../context/CartContext';
 import { apiUrl } from '../api';
 
 export default function CheckoutPage() {
-  const { items, totalDisplay, totalCents, clearCart, removeItem } = useCart();
+  const {
+    items, totalDisplay, totalCents, clearCart, removeItem,
+    featuredCents, featuredDisplay, pennyCount, pennyDisplay, pennyCapped, pennyCappedCents,
+  } = useCart();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -139,11 +142,28 @@ export default function CheckoutPage() {
             </li>
           ))}
         </ul>
-        <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
-          <span className="font-semibold text-text-secondary">Total Payout</span>
-          <span className="font-display font-bold text-xl text-text-primary">
-            {totalDisplay}
-          </span>
+        <div className="mt-4 pt-3 border-t border-border space-y-1">
+          {pennyCount > 0 && (
+            <>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-accept font-medium">Featured Items</span>
+                <span className="font-semibold text-text-primary">{featuredDisplay}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-amber-600 font-medium">
+                  Bulk Adds ({pennyCount}){pennyCapped ? ' — capped at 50%' : ''}
+                </span>
+                <span className="font-semibold text-amber-600">{pennyDisplay}</span>
+              </div>
+              <div className="border-t border-border mt-2 pt-2" />
+            </>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-text-secondary">Total Payout</span>
+            <span className="font-display font-bold text-xl text-text-primary">
+              {totalDisplay}
+            </span>
+          </div>
         </div>
         {!meetsMinimum && (
           <div className="mt-3 bg-warning-light border border-warning/20 rounded-[var(--radius-md)] px-4 py-3 text-sm text-warning font-medium">

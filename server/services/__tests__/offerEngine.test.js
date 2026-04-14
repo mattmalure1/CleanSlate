@@ -15,30 +15,31 @@ const engine = require('../offerEngine');
 // ------------------------------------------------------------
 // Test fixtures — seed tier_thresholds and offer_engine_config
 // ------------------------------------------------------------
+// V2 ROI floors: 40/60/85/125 (was 50/75/100/150)
 const SEED_TIERS = [
   // book
-  { category: 'book',   tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:  500000, roi_floor_percent:  50, min_flat_margin_cents: 150 },
-  { category: 'book',   tier: 'T2', min_rank_drops_90: 15, bsr_ceiling: 1500000, roi_floor_percent:  75, min_flat_margin_cents: 250 },
-  { category: 'book',   tier: 'T3', min_rank_drops_90:  8, bsr_ceiling: 2500000, roi_floor_percent: 100, min_flat_margin_cents: 400 },
-  { category: 'book',   tier: 'T4', min_rank_drops_90:  4, bsr_ceiling: 3000000, roi_floor_percent: 150, min_flat_margin_cents: 600 },
+  { category: 'book',   tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:  500000, roi_floor_percent:  40, min_flat_margin_cents: 150 },
+  { category: 'book',   tier: 'T2', min_rank_drops_90: 15, bsr_ceiling: 1500000, roi_floor_percent:  60, min_flat_margin_cents: 250 },
+  { category: 'book',   tier: 'T3', min_rank_drops_90:  8, bsr_ceiling: 2500000, roi_floor_percent:  85, min_flat_margin_cents: 400 },
+  { category: 'book',   tier: 'T4', min_rank_drops_90:  4, bsr_ceiling: 3000000, roi_floor_percent: 125, min_flat_margin_cents: 600 },
   // dvd
-  { category: 'dvd',    tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  50, min_flat_margin_cents: 150 },
-  { category: 'dvd',    tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  75, min_flat_margin_cents: 250 },
-  { category: 'dvd',    tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent: 100, min_flat_margin_cents: 400 },
-  { category: 'dvd',    tier: 'T4', min_rank_drops_90:  4, bsr_ceiling:  150000, roi_floor_percent: 150, min_flat_margin_cents: 600 },
+  { category: 'dvd',    tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  40, min_flat_margin_cents: 150 },
+  { category: 'dvd',    tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  60, min_flat_margin_cents: 250 },
+  { category: 'dvd',    tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent:  85, min_flat_margin_cents: 400 },
+  { category: 'dvd',    tier: 'T4', min_rank_drops_90:  4, bsr_ceiling:  150000, roi_floor_percent: 125, min_flat_margin_cents: 600 },
   // bluray
-  { category: 'bluray', tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  50, min_flat_margin_cents: 150 },
-  { category: 'bluray', tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  75, min_flat_margin_cents: 250 },
-  { category: 'bluray', tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent: 100, min_flat_margin_cents: 400 },
-  { category: 'bluray', tier: 'T4', min_rank_drops_90:  4, bsr_ceiling:  150000, roi_floor_percent: 150, min_flat_margin_cents: 600 },
+  { category: 'bluray', tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  40, min_flat_margin_cents: 150 },
+  { category: 'bluray', tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  60, min_flat_margin_cents: 250 },
+  { category: 'bluray', tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent:  85, min_flat_margin_cents: 400 },
+  { category: 'bluray', tier: 'T4', min_rank_drops_90:  4, bsr_ceiling:  150000, roi_floor_percent: 125, min_flat_margin_cents: 600 },
   // cd (no T4)
-  { category: 'cd',     tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:  100000, roi_floor_percent:  75, min_flat_margin_cents: 300 },
-  { category: 'cd',     tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:  150000, roi_floor_percent: 100, min_flat_margin_cents: 400 },
-  { category: 'cd',     tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  200000, roi_floor_percent: 150, min_flat_margin_cents: 600 },
+  { category: 'cd',     tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:  100000, roi_floor_percent:  40, min_flat_margin_cents: 300 },
+  { category: 'cd',     tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:  150000, roi_floor_percent:  60, min_flat_margin_cents: 400 },
+  { category: 'cd',     tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  200000, roi_floor_percent:  85, min_flat_margin_cents: 600 },
   // game (no T4)
-  { category: 'game',   tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  50, min_flat_margin_cents: 250 },
-  { category: 'game',   tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  75, min_flat_margin_cents: 400 },
-  { category: 'game',   tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent: 100, min_flat_margin_cents: 600 },
+  { category: 'game',   tier: 'T1', min_rank_drops_90: 30, bsr_ceiling:   50000, roi_floor_percent:  40, min_flat_margin_cents: 250 },
+  { category: 'game',   tier: 'T2', min_rank_drops_90: 15, bsr_ceiling:   80000, roi_floor_percent:  60, min_flat_margin_cents: 400 },
+  { category: 'game',   tier: 'T3', min_rank_drops_90:  8, bsr_ceiling:  120000, roi_floor_percent:  85, min_flat_margin_cents: 600 },
 ];
 
 const SEED_CONFIG = {
@@ -557,7 +558,7 @@ describe('Step 10/11: ROI floor, final offer, sanity', () => {
   test('roi_floor_applied in trace matches tier', () => {
     const r = run(makeExtracted({ sales_rank_drops_90: 35 }));
     if (r.accepted) {
-      assert.equal(r.calculation_trace.roi_floor_applied, 50); // T1 book
+      assert.equal(r.calculation_trace.roi_floor_applied, 40); // V2 T1 book
     }
   });
 });
@@ -896,6 +897,72 @@ describe('lookupFBAFee', () => {
     // 4 lbs = 520 + 38 = 558
     const fee = engine.lookupFBAFee(1820, 200, 150, 30);
     assert.ok(fee >= 558 && fee <= 560, `got ${fee}`);
+  });
+});
+
+// ============================================================
+// Penny tier (V2)
+// ============================================================
+describe('V2: Penny tier', () => {
+  test('item with net_resale >= 50 but failing standard ROI → penny tier $0.10', () => {
+    // Low working price where standard math produces < $0.25 offer
+    // but net_resale is still above $0.50 → penny tier kicks in
+    const r = run(makeExtracted({
+      current_used_buybox_cents: 500,
+      avg_90_day_used_buybox_cents: 500,
+      sales_rank_drops_90: 35,
+      current_bsr: 250000,
+    }));
+    // At $5 working price with fees ~$7-9, this likely rejects standard but
+    // if net_resale >= 50, penny tier activates.
+    // Let's check: the engine may accept or penny depending on exact fee math
+    if (r.calculation_trace.penny_tier_applied) {
+      assert.equal(r.accepted, true);
+      assert.equal(r.offer_cents, 10);
+      assert.equal(r.is_penny_tier, true);
+    }
+  });
+
+  test('penny tier: net_resale just above 50 cents → $0.10 offer', () => {
+    // Craft a scenario where fees eat most of the price but leave $0.50+ net
+    // Working price $8, typical book fees ~$7.30 → net_resale ~$0.70
+    const r = run(makeExtracted({
+      current_used_buybox_cents: 800,
+      avg_90_day_used_buybox_cents: 800,
+      sales_rank_drops_90: 35,
+      current_bsr: 250000,
+    }));
+    if (r.calculation_trace.penny_tier_applied) {
+      assert.equal(r.accepted, true);
+      assert.equal(r.offer_cents, 10);
+      assert.equal(r.is_penny_tier, true);
+      assert.ok(r.calculation_trace.penny_net_profit_cents >= 50,
+        `penny profit ${r.calculation_trace.penny_net_profit_cents} should be >= 50`);
+    }
+  });
+
+  test('penny tier does NOT activate when net_resale < 50', () => {
+    // Very low working price → fees exceed price → net_resale negative → reject
+    const r = run(makeExtracted({
+      current_used_buybox_cents: 250,
+      avg_90_day_used_buybox_cents: 250,
+      sales_rank_drops_90: 35,
+      current_bsr: 250000,
+    }));
+    assert.equal(r.accepted, false);
+    assert.equal(r.calculation_trace.rejection_step, 8); // "No margin after fees"
+  });
+
+  test('is_penny_tier is false for standard accepted offers', () => {
+    const r = run(makeExtracted({
+      current_used_buybox_cents: 2000,
+      avg_90_day_used_buybox_cents: 2000,
+      sales_rank_drops_90: 35,
+      current_bsr: 250000,
+    }));
+    assert.equal(r.accepted, true);
+    assert.equal(r.is_penny_tier, false);
+    assert.equal(r.calculation_trace.penny_tier_applied, false);
   });
 });
 

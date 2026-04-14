@@ -44,7 +44,8 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
 
   function addResult(item) {
     setItems(prev => [item, ...prev]);
-    const ok = item.status === 'accepted' || item.status === 'low';
+    const isPenny = item.status === 'penny';
+    const ok = item.status === 'accepted' || item.status === 'low' || isPenny;
     if (ok) {
       addItem({
         asin: item.asin,
@@ -57,9 +58,15 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         hasCase: item.hasCase,
         color: item.color,
         label: item.label,
+        tier: isPenny ? 'penny' : 'standard',
       });
-      showFlash('accept', `${item.offerDisplay} — ${item.title || 'Added!'}`);
-      playTone(880, 0.08); // high beep
+      if (isPenny) {
+        showFlash('penny', `$0.10 bulk add — ${item.title || 'Added!'}`);
+        playTone(550, 0.10); // mid tone for penny
+      } else {
+        showFlash('accept', `${item.offerDisplay} — ${item.title || 'Added!'}`);
+        playTone(880, 0.08); // high beep
+      }
     } else {
       showFlash('reject', item.message || item.reason || 'Pass');
       playTone(330, 0.15); // low tone
@@ -260,12 +267,14 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
             className={`absolute inset-x-4 top-14 z-30 rounded-xl px-5 py-3 flex items-center gap-3 shadow-2xl animate-[fadeInOut_1.8s_ease-in-out_forwards] ${
               flash.type === 'accept'
                 ? 'bg-green-500/90 border-2 border-green-300'
-                : 'bg-red-500/90 border-2 border-red-300'
+                : flash.type === 'penny'
+                  ? 'bg-amber-500/90 border-2 border-amber-300'
+                  : 'bg-red-500/90 border-2 border-red-300'
             }`}
           >
-            {flash.type === 'accept'
-              ? <Check size={22} className="text-white flex-shrink-0" />
-              : <X size={22} className="text-white flex-shrink-0" />
+            {flash.type === 'reject'
+              ? <X size={22} className="text-white flex-shrink-0" />
+              : <Check size={22} className="text-white flex-shrink-0" />
             }
             <span className="text-white text-sm font-semibold truncate">{flash.text}</span>
           </div>
@@ -275,14 +284,17 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         {items.length > 0 && (
           <div className="absolute bottom-0 left-0 right-0 z-20 bg-black/90 max-h-[30vh] overflow-y-auto border-t border-white/10">
             {items.map((item, i) => {
-              const ok = item.status === 'accepted' || item.status === 'low';
+              const isPenny = item.status === 'penny';
+              const ok = item.status === 'accepted' || item.status === 'low' || isPenny;
               return (
                 <div key={`${item.code}-${i}`} className="flex items-center gap-3 px-4 py-2 border-b border-white/5">
                   {item.imageUrl ? (
                     <img src={item.imageUrl} alt="" className="w-9 h-9 rounded object-cover flex-shrink-0" />
                   ) : (
-                    <div className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${ok ? 'bg-brand-900' : 'bg-red-900/50'}`}>
-                      {ok ? <Check size={14} className="text-brand-400" /> : <X size={14} className="text-red-400" />}
+                    <div className={`w-9 h-9 rounded flex items-center justify-center flex-shrink-0 ${
+                      ok ? (isPenny ? 'bg-amber-900/50' : 'bg-brand-900') : 'bg-red-900/50'
+                    }`}>
+                      {ok ? <Check size={14} className={isPenny ? 'text-amber-400' : 'text-brand-400'} /> : <X size={14} className="text-red-400" />}
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
@@ -290,7 +302,7 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {ok ? (
-                      <span className="text-brand-400 font-bold text-xs">{item.offerDisplay}</span>
+                      <span className={`font-bold text-xs ${isPenny ? 'text-amber-400' : 'text-brand-400'}`}>{item.offerDisplay}</span>
                     ) : (
                       <span className="text-red-400 text-xs">Pass</span>
                     )}
@@ -311,6 +323,7 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
             <p className="text-white/40 text-xs mt-0.5">ISBN, UPC, or EAN — any orientation</p>
           </div>
         )}
+      </div>
 
       {error && (
         <div className="bg-black/90 text-center py-4 px-6">
