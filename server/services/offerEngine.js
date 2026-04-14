@@ -1,825 +1,668 @@
-// All prices in CENTS (integers)
-
-// Fee stack constants
-const REFERRAL_RATE = 0.15;
-const CLOSING_FEE = 180;          // $1.80
-const BUY_COST = 22;              // $0.22
-const PREP_FEE = 145;             // $1.45
-const INBOUND_SHIP_PER_LB = 50;   // $0.50/lb
-const DISC_BUFFER = 50;           // $0.50 for disc items only
-const DEFAULT_WEIGHT_GRAMS = 400;
-
-// FBA fulfillment fee by weight
-function getFbaFee(weightLbs) {
-  if (weightLbs <= 0.5) return 306;
-  if (weightLbs <= 1.0) return 340;
-  if (weightLbs <= 1.5) return 375;
-  if (weightLbs <= 2.0) return 420;
-  if (weightLbs <= 3.0) return 475;
-  return 475 + Math.ceil((weightLbs - 3) * 50);
-}
-
-// Media Mail shipping cost
-function getMediaMailCost(weightLbs) {
-  if (weightLbs <= 1) return 349;
-  if (weightLbs <= 2) return 398;
-  if (weightLbs <= 3) return 447;
-  if (weightLbs <= 4) return 496;
-  return 545;
-}
-
 // ============================================================
-// CATEGORY DETECTION
+// offerEngine.js — Spec-aligned 11-step algorithm
+//
+// All prices in CENTS (integers). Pure JS (no TypeScript).
+//
+// Implements CLEANSLATE_DB_AND_ENGINE.md §2.2 exactly:
+//   Step 1  — UPC -> ASIN resolution
+//   Step 2  — Cache freshness check (data_age_days <= 30)
+//   Step 3  — Hard rejection filters (hazmat/adult/oversize/blacklist/do_not_buy/inventory_cap)
+//   Step 4  — Velocity check (sales_rank_drops_90 >= 4) + tier assignment
+//   Step 5  — Price determination: MIN(current_buybox, avg_90_day_buybox) + volatility gate
+//   Step 6  — Competition check (Amazon-on-listing, fba_offer_count)
+//   Step 7  — Fee calculation (reads offer_engine_config)
+//   Step 8  — Net resale value
+//   Step 9  — Inventory throttling (MVP: always 1.00)
+//   Step 10 — ROI floor + final offer
+//   Step 11 — Sanity checks
+//
+// Every REJECT path populates the CalculationTrace with everything
+// collected up to that point and sets rejection_step (1..11).
 // ============================================================
 
-const CATEGORY_MAP = {
-  283155: 'book',
-  163856011: 'dvd',
-  2625373011: 'dvd',
-  5174: 'cd',
-  468642: 'game',
-  11846801: 'game',
+const tt = require('./tierThresholds');
+
+// ------------------------------------------------------------
+// Hardcoded tables (spec §2.5, §2.6 — architectural rules, not
+// tunable parameters, so not in offer_engine_config).
+// ------------------------------------------------------------
+
+// Category blacklist (case-insensitive substring match against category_tree joined)
+const CATEGORY_BLACKLIST = [
+  'textbook',
+  'workbook',
+  'solutions manual',
+  'vhs',
+  'cassette',
+  'vinyl',
+  'lp record',
+  'coloring',
+  'journal',
+];
+
+// Minimum viable working price by category
+const CATEGORY_MIN_PRICE_CENTS = {
+  book:   200,
+  dvd:    250,
+  bluray: 250,
+  cd:     600,
+  game:   500,
 };
 
-function detectCategory(product) {
-  const rootCat = product.rootCategory;
-  if (CATEGORY_MAP[rootCat]) return CATEGORY_MAP[rootCat];
+const DEFAULT_WEIGHT_GRAMS = 400;
 
-  const tree = product.categoryTree || [];
-  const names = tree.map(c => (c.name || '').toLowerCase()).join(' ');
-  if (/book|textbook/.test(names)) return 'book';
-  if (/movie|dvd|blu-ray/.test(names)) return 'dvd';
-  if (/music|cd/.test(names)) return 'cd';
-  if (/video game|nintendo|playstation|xbox/.test(names)) return 'game';
+// Oversize thresholds (mm / g) — spec §2.2 Step 3
+const MAX_LENGTH_MM = 457; // 18 in
+const MAX_WIDTH_MM  = 356; // 14 in
+const MAX_HEIGHT_MM = 203; // 8 in
+const MAX_WEIGHT_G  = 9072; // 20 lbs
 
+// ------------------------------------------------------------
+// Deprecated-param warning with dedup by caller stack frame.
+// ------------------------------------------------------------
+const _warnedCallers = new Set();
+function warnDeprecated(paramName, value) {
+  const stack = new Error().stack || '';
+  // Line [2] in stack is the caller of the function that called warnDeprecated
+  const key = (stack.split('\n')[3] || 'unknown').trim();
+  if (_warnedCallers.has(key + ':' + paramName)) return;
+  _warnedCallers.add(key + ':' + paramName);
+  console.warn(
+    `[offerEngine] Deprecated param "${paramName}"=${JSON.stringify(value)} ` +
+    `passed from ${key} — ignored. See spec §4.1.`
+  );
+}
+
+// ------------------------------------------------------------
+// Keepa field extraction (spec §2.3)
+// Normalizes raw Keepa product response -> KeepaExtractedFields
+// Keepa convention: -1 means "no data".
+// ------------------------------------------------------------
+function extractKeepaFields(product) {
+  const stats = product.stats || {};
+  const cur   = stats.current || [];
+  const avg90 = stats.avg90   || [];
+  const min90 = stats.min90   || [];
+  const max90 = stats.max90   || [];
+
+  const nz = (v) => (v != null && v !== -1 ? v : null);
+
+  // Category tree normalization: Keepa returns array of {catId,name}
+  const categoryTree = Array.isArray(product.categoryTree)
+    ? product.categoryTree.map(c => (c && c.name) || '').filter(Boolean)
+    : [];
+
+  // data_age_days: Keepa `lastUpdate` is minutes since Keepa epoch (2011-01-01)
+  const KEEPA_EPOCH_MS = 1293840000000;
+  let dataAgeDays = 0;
+  if (product.lastUpdate && typeof product.lastUpdate === 'number') {
+    const lastMs = KEEPA_EPOCH_MS + product.lastUpdate * 60000;
+    dataAgeDays = Math.max(0, Math.floor((Date.now() - lastMs) / 86400000));
+  }
+
+  return {
+    asin: product.asin || null,
+    title: product.title || '',
+    category_tree: categoryTree,
+    category_root: null, // populated by detectCategory()
+
+    // Prices (cents) — used-buybox anchor for buyback pricing.
+    // NOTE: Keepa index 18 = New Buy Box Shipping (wrong for used resale).
+    //       Keepa index 32 = Used Buy Box (what we actually want).
+    // The spec §2.3 mapping was incorrect for a used-media buyback business
+    // and said index 18; we override to 32 here and rename the fields to
+    // current_used_buybox_cents / avg_90_day_used_buybox_cents / ... for clarity.
+    current_used_buybox_cents:     nz(cur[32]),
+    current_amazon_cents:          nz(cur[0]),
+    current_new_3p_cents:          nz(cur[1]),
+    avg_90_day_used_buybox_cents:  nz(avg90[32]),
+    avg_180_day_used_buybox_cents: nz((stats.avg180 || [])[32]),
+    min_90_day_used_cents:         nz(min90[32]),
+    max_90_day_used_cents:         nz(max90[32]),
+
+    // Rank
+    current_bsr:      nz(cur[3]),
+    avg_90_day_bsr:   nz(avg90[3]),
+
+    // Velocity (spec §4.1 rule 3 — the primary signal)
+    sales_rank_drops_30:  stats.salesRankDrops30  ?? 0,
+    sales_rank_drops_90:  stats.salesRankDrops90  ?? 0,
+    sales_rank_drops_180: stats.salesRankDrops180 ?? 0,
+
+    // Competition
+    new_offer_count: nz(cur[11]) ?? 0,
+    fba_offer_count: product.newOffersFBA ?? 0,
+    amazon_is_seller: (cur[0] != null && cur[0] !== -1),
+
+    // Package dims
+    package_height_mm: nz(product.packageHeight),
+    package_length_mm: nz(product.packageLength),
+    package_width_mm:  nz(product.packageWidth),
+    package_weight_g:  nz(product.packageWeight) ?? nz(product.itemWeight),
+
+    // Flags
+    is_hazmat:   product.hazardousMaterialType != null && product.hazardousMaterialType !== 0,
+    is_adult:    !!product.isAdultProduct,
+    is_redirect: !!product.isRedirectASIN,
+
+    data_age_days: dataAgeDays,
+  };
+}
+
+// ------------------------------------------------------------
+// Category detection (bluray-before-dvd ordering per Matt's direction)
+//
+// Rules:
+//   1. Digital-only formats (Kindle, Audible, MP3, Prime/Instant/Amazon Video)
+//      always return null — customer must ship physical media.
+//   2. Physical-media detection in priority order (bluray before dvd).
+//   3. Game detection requires the exact phrase "video games" — we never
+//      match on bare "games" because that would catch "Toys & Games".
+//   4. Book detection requires "books" AND no digital markers. Substrings
+//      like "cookbooks" correctly match via the "books" substring.
+// ------------------------------------------------------------
+function detectCategory(categoryTree) {
+  if (!Array.isArray(categoryTree) || categoryTree.length === 0) return null;
+  const joined = categoryTree.join(' ').toLowerCase();
+
+  // Gate 1: reject any digital-only format outright.
+  // Checked BEFORE physical matches so Kindle/Audible/MP3/Prime Video
+  // always return null even if the tree also mentions a physical category.
+  if (joined.includes('kindle')) return null;
+  if (joined.includes('audible')) return null;
+  if (joined.includes('mp3')) return null;
+  if (joined.includes('digital music')) return null;
+  if (joined.includes('prime video')) return null;
+  if (joined.includes('instant video')) return null;
+  if (joined.includes('amazon video')) return null;
+
+  // Gate 2: physical-media detection. Order matters: bluray before dvd
+  // because Amazon nests "Movies & TV > Blu-ray > DVD" in category trees.
+  if (joined.includes('blu-ray') || joined.includes('bluray')) return 'bluray';
+  if (joined.includes('dvd')) return 'dvd';
+  // Game requires the FULL phrase "video games" — bare "games" would
+  // false-match "Toys & Games", "Board Games", etc.
+  if (joined.includes('video games') || joined.includes('videogames')) return 'game';
+  if (joined.includes('cds & vinyl') || joined.includes('cds and vinyl')) return 'cd';
+  if (joined.includes('music') && joined.includes('cds')) return 'cd';
+  // Book is last so digital-book markers have a chance to disqualify first.
+  if (joined.includes('books')) return 'book';
   return null;
 }
 
-// ============================================================
-// GATED BRANDS/ASINS BLOCKLIST
-// Items we can't sell on Amazon FBA due to brand gating
-// Add ASINs or brand name patterns as you discover them
-// ============================================================
+// ------------------------------------------------------------
+// FBA fee lookup (spec §2.7)
+// Returns cents. Assumes caller already filtered oversize at Step 3.
+// ------------------------------------------------------------
+function lookupFBAFee(weight_g, length_mm, width_mm, height_mm) {
+  const weight_lbs = weight_g / 453.592;
 
-const GATED_ASINS = new Set([
-  // Add specific ASINs here as you find them
-  // 'B00EXAMPLE1',
-]);
+  // Small Standard (spec §2.7)
+  const isSmallStandard =
+    weight_g <= 425 &&
+    length_mm != null && length_mm <= 381 &&
+    width_mm  != null && width_mm  <= 305 &&
+    height_mm != null && height_mm <= 19;
 
-const GATED_BRAND_PATTERNS = [
-  // Common gated media brands — add as you discover
-  /disney/i,
-  /studio ghibli/i,
-  /criterion collection/i,
-  // Add more patterns as needed:
-  // /brand name/i,
-];
+  if (isSmallStandard) return 306;
+
+  // Large Standard tiers (spec §2.7 MVP values)
+  if (weight_lbs <= 1)  return 325;
+  if (weight_lbs <= 2)  return 450;
+  if (weight_lbs <= 3)  return 520;
+  return 520 + Math.ceil((weight_lbs - 3) * 38);
+}
+
+// ------------------------------------------------------------
+// Category blacklist check
+// ------------------------------------------------------------
+function hitsBlacklist(categoryTree) {
+  if (!Array.isArray(categoryTree) || categoryTree.length === 0) return null;
+  const joined = categoryTree.join(' ').toLowerCase();
+  for (const term of CATEGORY_BLACKLIST) {
+    if (joined.includes(term)) return term;
+  }
+  return null;
+}
+
+// ------------------------------------------------------------
+// Gated-brand/ASIN check — reads from DB-loaded cache in
+// tierThresholds.js (gated_items table). Falls back to hardcoded
+// patterns if the table hasn't been loaded yet (e.g. in tests
+// that don't inject gated items).
+//
+// Checks: ASIN exact match, then brand substring match against
+// product.brand, product.manufacturer, and product.title.
+// ------------------------------------------------------------
+
+// Hardcoded fallbacks (only used if gated_items table is empty/missing).
+// Once the migration is applied and items are in the DB, these are redundant.
+const GATED_ASINS_FALLBACK = new Set();
+const GATED_BRAND_FALLBACK = ['disney', 'studio ghibli', 'criterion collection'];
 
 function isGated(product) {
-  // Check ASIN blocklist
-  if (product.asin && GATED_ASINS.has(product.asin)) {
+  const dbAsins = tt.getGatedAsins();
+  const dbBrands = tt.getGatedBrands();
+
+  // Use DB-loaded lists if available, otherwise fallback
+  const asinSet = dbAsins.size > 0 ? dbAsins : GATED_ASINS_FALLBACK;
+  const brandList = dbBrands.length > 0 ? dbBrands : GATED_BRAND_FALLBACK;
+
+  // ASIN exact match
+  if (product.asin && asinSet.has(product.asin.toUpperCase())) {
     return { gated: true, reason: 'asin_blocked', brand: product.asin };
   }
 
-  // Check brand patterns
-  const brand = (product.brand || '').toLowerCase();
-  const manufacturer = (product.manufacturer || '').toLowerCase();
-  const title = (product.title || '').toLowerCase();
+  // Brand substring match against brand, manufacturer, title
+  const searchFields = [
+    (product.brand || '').toLowerCase(),
+    (product.manufacturer || '').toLowerCase(),
+    (product.title || '').toLowerCase(),
+  ].join(' ');
 
-  for (const pattern of GATED_BRAND_PATTERNS) {
-    if (pattern.test(brand) || pattern.test(manufacturer) || pattern.test(title)) {
-      return { gated: true, reason: 'brand_gated', brand: pattern.source };
+  for (const pattern of brandList) {
+    if (searchFields.includes(pattern)) {
+      return { gated: true, reason: 'brand_gated', brand: pattern };
     }
   }
 
   return { gated: false };
 }
 
-// ============================================================
-// TRIGGER TABLES — full scouting tool config per tier
-// Each tier: { maxRank, fbaSlot, usedSlot, selectBBifLower, selectBBifHigher,
-//              offNewBB, offAmazon, targetProfit (cents), reject }
-// ============================================================
+// Legacy exports for backward compat (tests may reference these)
+const GATED_ASINS = GATED_ASINS_FALLBACK;
+const GATED_BRAND_PATTERNS = GATED_BRAND_FALLBACK.map(b => new RegExp(b, 'i'));
 
-// tier: 1=Lightning, 2=Fast, 3=Steady, 4=Slow
-// profitFloor: minimum $ profit we need (in cents) — below this, reject
-// rejectIfAmazon: if true, reject when Amazon is a seller on this listing (can't compete on slow items)
-const TRIGGERS = {
-  book: [
-    { tier: 1, maxRank: 500000,   fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.05, targetProfit: 250, roiFloor: 30, profitFloor: 200, rejectIfAmazon: false },
-    { tier: 2, maxRank: 1000000,  fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.05, targetProfit: 350, roiFloor: 50, profitFloor: 300, rejectIfAmazon: false },
-    { tier: 3, maxRank: 2000000,  fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.10, targetProfit: 500, roiFloor: 75, profitFloor: 400, rejectIfAmazon: true },
-    { tier: 4, maxRank: 6000000,  fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.10, targetProfit: 800, roiFloor: 150, profitFloor: 600, rejectIfAmazon: true },
-    { maxRank: Infinity, reject: true },
-  ],
-  dvd: [
-    { tier: 1, maxRank: 50000,    fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.05, targetProfit: 250, roiFloor: 30, profitFloor: 200, rejectIfAmazon: false },
-    { tier: 2, maxRank: 100000,   fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.10, targetProfit: 350, roiFloor: 50, profitFloor: 300, rejectIfAmazon: false },
-    { tier: 3, maxRank: 200000,   fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.10, targetProfit: 500, roiFloor: 75, profitFloor: 400, rejectIfAmazon: true },
-    { tier: 4, maxRank: 250000,   fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.10, targetProfit: 650, roiFloor: 150, profitFloor: 600, rejectIfAmazon: true },
-    { maxRank: Infinity, reject: true },
-  ],
-  cd: [
-    { tier: 1, maxRank: 50000,    fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.05, targetProfit: 250, roiFloor: 30, profitFloor: 200, rejectIfAmazon: false },
-    { tier: 2, maxRank: 100000,   fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.10, targetProfit: 350, roiFloor: 50, profitFloor: 300, rejectIfAmazon: false },
-    { tier: 3, maxRank: 200000,   fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.10, targetProfit: 500, roiFloor: 75, profitFloor: 400, rejectIfAmazon: true },
-    { tier: 4, maxRank: 250000,   fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.10, targetProfit: 650, roiFloor: 150, profitFloor: 600, rejectIfAmazon: true },
-    { maxRank: Infinity, reject: true },
-  ],
-  game: [
-    { tier: 1, maxRank: 100000,   fbaSlot: 1, usedSlot: 3, selectBBifLower: false, selectBBifHigher: true,  offNewBB: 0.05, offAmazon: 0.10, targetProfit: 350, roiFloor: 30, profitFloor: 200, rejectIfAmazon: false },
-    { maxRank: Infinity, reject: true },
-  ],
-};
+// ------------------------------------------------------------
+// CalculationTrace builder (spec §2.1)
+// ------------------------------------------------------------
+function newTrace() {
+  return {
+    asin: null,
+    category: null,
+    keepa_fields: null,
+    hard_rejections_checked: [],
+    working_price_cents: null,
+    working_price_source: null,
+    volatility_ratio: null,
+    velocity_signal: null,
+    tier_assigned: null,
+    fees_breakdown: null,
+    net_resale_cents: null,
+    roi_floor_applied: null,
+    required_margin_cents: null,
+    inventory_penalty_applied: 1.0,
+    competition_penalty_applied: 1.0,
+    final_offer_cents: null,
+    rejection_step: null,
+    rejection_reason_detail: null,
+  };
+}
 
-// Find the matching trigger tier for a category + rank
-function getTrigger(category, salesRank) {
-  if (!salesRank || salesRank <= 0) return null;
-  const tiers = TRIGGERS[category];
-  if (!tiers) return null;
+function rejectWith(trace, step, reason, detail = null) {
+  trace.rejection_step = step;
+  trace.rejection_reason_detail = detail || reason;
+  return {
+    accepted: false,
+    rejection_reason: reason,
+    calculation_trace: trace,
+    keepa_data_timestamp: new Date(),
+  };
+}
+
+function acceptWith(trace, offerCents, tier) {
+  return {
+    accepted: true,
+    offer_cents: offerCents,
+    tier,
+    calculation_trace: trace,
+    keepa_data_timestamp: new Date(),
+  };
+}
+
+// ------------------------------------------------------------
+// The 11-step algorithm
+//
+// opts:
+//   inventoryCount:   number, defaults to 0 (Step 3 cap check & Step 9 throttle)
+//   doNotBuyMatch:    boolean, defaults to false (Step 3 cooldown check)
+//   gatedResult:      object, result of isGated(rawProduct) if already computed
+//
+// Returns OfferEngineOutput per spec §2.1.
+// ------------------------------------------------------------
+function runOfferEngine(rawProduct, extractedFields, opts = {}) {
+  const trace = newTrace();
+
+  // ===== STEP 1: UPC -> ASIN resolution =====
+  if (!extractedFields || !extractedFields.asin) {
+    return rejectWith(trace, 1,
+      "Barcode not recognized. Make sure you're scanning a physical book, DVD, Blu-ray, CD, or video game.");
+  }
+  trace.asin = extractedFields.asin;
+
+  // ===== STEP 2: Data freshness =====
+  if (extractedFields.data_age_days > 30) {
+    trace.keepa_fields = extractedFields;
+    return rejectWith(trace, 2, 'Insufficient recent data',
+      `data_age_days=${extractedFields.data_age_days}`);
+  }
+  trace.keepa_fields = extractedFields;
+
+  // ===== STEP 3: Hard rejection filters =====
+  const checks = trace.hard_rejections_checked;
+
+  checks.push('is_hazmat');
+  if (extractedFields.is_hazmat) return rejectWith(trace, 3, 'Hazmat restricted');
+
+  checks.push('is_adult');
+  if (extractedFields.is_adult) return rejectWith(trace, 3, 'Adult content restricted');
+
+  checks.push('is_redirect');
+  if (extractedFields.is_redirect) return rejectWith(trace, 3, 'Listing deprecated');
+
+  checks.push('package_dims');
+  if (extractedFields.package_height_mm == null ||
+      extractedFields.package_length_mm == null ||
+      extractedFields.package_width_mm  == null ||
+      extractedFields.package_weight_g  == null) {
+    return rejectWith(trace, 3, 'Insufficient product data');
+  }
+
+  checks.push('oversize');
+  if (extractedFields.package_length_mm > MAX_LENGTH_MM ||
+      extractedFields.package_width_mm  > MAX_WIDTH_MM  ||
+      extractedFields.package_height_mm > MAX_HEIGHT_MM) {
+    return rejectWith(trace, 3, 'Oversize');
+  }
+
+  checks.push('overweight');
+  if (extractedFields.package_weight_g > MAX_WEIGHT_G) {
+    return rejectWith(trace, 3, 'Overweight');
+  }
+
+  checks.push('category_blacklist');
+  const blacklistHit = hitsBlacklist(extractedFields.category_tree);
+  if (blacklistHit) {
+    return rejectWith(trace, 3, 'Category not accepted', `matched:${blacklistHit}`);
+  }
+
+  checks.push('gated_brand');
+  const gated = opts.gatedResult || (rawProduct ? isGated(rawProduct) : { gated: false });
+  if (gated.gated) {
+    return rejectWith(trace, 3, 'Category not accepted', `gated:${gated.reason}`);
+  }
+
+  checks.push('do_not_buy');
+  if (opts.doNotBuyMatch) {
+    return rejectWith(trace, 3, 'Item on cooldown list');
+  }
+
+  checks.push('inventory_cap');
+  const maxCopies = tt.getConfig('max_copies_per_asin');
+  const invCount = opts.inventoryCount || 0;
+  if (invCount >= maxCopies) {
+    return rejectWith(trace, 3, 'We have enough of this item right now');
+  }
+
+  // ===== STEP 4: Category gate + velocity + tier =====
+
+  // 4a: Category detection happens FIRST. If the category tree doesn't map
+  // to one of our 5 supported physical-media categories, reject immediately
+  // with a customer-facing message that explains what we DO buy. This runs
+  // before the velocity check so a cereal-box scan gets the right reason
+  // instead of confusing "low velocity" / "below tier thresholds" noise.
+  const category = detectCategory(extractedFields.category_tree);
+  if (!category) {
+    return rejectWith(trace, 4,
+      'We only buy books, DVDs, Blu-rays, CDs, and video games',
+      `category_tree=${JSON.stringify(extractedFields.category_tree)}`);
+  }
+  extractedFields.category_root = category;
+  trace.category = category;
+
+  // 4b: Velocity check against the spec §4.1 rule 3 floor.
+  const rankDrops90 = extractedFields.sales_rank_drops_90;
+  trace.velocity_signal = rankDrops90;
+
+  if (rankDrops90 < 4) {
+    return rejectWith(trace, 4, 'Low velocity — sold fewer than 4 times in 90 days',
+      `sales_rank_drops_90=${rankDrops90}`);
+  }
+
+  // 4c: Tier lookup + walking. Primary signal is rank drops; BSR ceiling
+  // is the secondary gate per Matt's spec clarification.
+  const tiers = tt.getTiersForCategory(category);
+  if (!tiers || tiers.length === 0) {
+    // Should never happen in production — every detectCategory output
+    // has a matching seed row in tier_thresholds. Kept as a safety net.
+    return rejectWith(trace, 4, 'Category not accepted', `no_tiers_for:${category}`);
+  }
+
+  // Walk tiers from strictest (T1) to loosest, assign first one we qualify for.
+  // BSR is the secondary gate per Matt: rank drops primary, BSR as ceiling.
+  let assignedTier = null;
   for (const tier of tiers) {
-    if (salesRank <= tier.maxRank) return tier;
-  }
-  return null;
-}
-
-// Legacy wrapper
-function getTargetProfit(category, salesRank) {
-  const trigger = getTrigger(category, salesRank);
-  if (!trigger || trigger.reject) return null;
-  return trigger.targetProfit;
-}
-
-// ============================================================
-// VELOCITY METRICS
-// ============================================================
-
-function getVelocity(product, category) {
-  const salesRank = getSalesRank(product);
-  const stats = product.stats || {};
-
-  // Rank drops from Keepa stats
-  const rankDrops30 = stats.salesRankDrops30 ?? null;
-  const rankDrops90 = stats.salesRankDrops90 ?? null;
-  const rankDrops180 = stats.salesRankDrops180 ?? null;
-
-  // 6-month average monthly sales (primary — most stable, smooths seasonal swings)
-  let avgMonthlySales6mo = null;
-  if (rankDrops180 != null && rankDrops180 > 0) {
-    avgMonthlySales6mo = Math.round(rankDrops180 / 6);
-  }
-
-  // Current 30-day sales (for trend detection)
-  let currentMonthlySales = null;
-  if (rankDrops30 != null) {
-    currentMonthlySales = rankDrops30;
-  }
-
-  // Amazon's monthlySoldHistory if available and not stale
-  let amazonMonthlySold = null;
-  const history = product.monthlySoldHistory;
-  if (history && history.length >= 2) {
-    const lastVal = history[history.length - 1];
-    if (lastVal > 0) amazonMonthlySold = lastVal;
-  }
-
-  // Determine the monthly sales figure for tier assignment
-  // Priority: 6-month average (most stable) → Amazon data → 30-day drops → rank estimate
-  let monthlySales = null;
-  let source = 'rank_estimate';
-
-  if (avgMonthlySales6mo != null) {
-    monthlySales = avgMonthlySales6mo;
-    source = 'rank_drops_180d_avg';
-  } else if (amazonMonthlySold != null) {
-    monthlySales = amazonMonthlySold;
-    source = 'keepa_monthly_sold';
-  } else if (currentMonthlySales != null && currentMonthlySales > 0) {
-    monthlySales = currentMonthlySales;
-    source = 'rank_drops_30d';
-  }
-
-  // Fallback: estimate from rank + category
-  if (monthlySales === null && salesRank > 0) {
-    if (category === 'book') {
-      if (salesRank <= 50000) monthlySales = 60;
-      else if (salesRank <= 100000) monthlySales = 30;
-      else if (salesRank <= 500000) monthlySales = 10;
-      else if (salesRank <= 1000000) monthlySales = 3;
-      else if (salesRank <= 2000000) monthlySales = 1;
-      else monthlySales = 0;
-    } else if (category === 'dvd' || category === 'cd') {
-      if (salesRank <= 25000) monthlySales = 20;
-      else if (salesRank <= 50000) monthlySales = 10;
-      else if (salesRank <= 100000) monthlySales = 5;
-      else if (salesRank <= 200000) monthlySales = 2;
-      else monthlySales = 0;
-    } else if (category === 'game') {
-      if (salesRank <= 25000) monthlySales = 15;
-      else if (salesRank <= 50000) monthlySales = 8;
-      else if (salesRank <= 100000) monthlySales = 3;
-      else monthlySales = 0;
-    } else {
-      monthlySales = 0;
-    }
-  }
-
-  // Trend detection: compare current 30d vs 6-month average
-  // > 1.5 = accelerating, < 0.5 = decelerating
-  let trend = 'stable';
-  if (avgMonthlySales6mo != null && avgMonthlySales6mo > 0 && currentMonthlySales != null) {
-    const ratio = currentMonthlySales / avgMonthlySales6mo;
-    if (ratio > 1.5) trend = 'accelerating';
-    else if (ratio < 0.5) trend = 'decelerating';
-  }
-
-  // Sales rank averages from stats
-  const rankAvg30 = stats.avg30?.[3] > 0 ? stats.avg30[3] : null;
-  const rankAvg90 = stats.avg90?.[3] > 0 ? stats.avg90[3] : null;
-  const rankAvg180 = stats.avg180?.[3] > 0 ? stats.avg180[3] : null;
-
-  let velocityTier, velocityLabel;
-  if (monthlySales >= 20) { velocityTier = 'fast'; velocityLabel = 'Fast Seller'; }
-  else if (monthlySales >= 5) { velocityTier = 'medium'; velocityLabel = 'Medium Seller'; }
-  else if (monthlySales >= 1) { velocityTier = 'slow'; velocityLabel = 'Slow Seller'; }
-  else { velocityTier = 'very_slow'; velocityLabel = 'Very Slow'; }
-
-  return {
-    monthlySales, avgMonthlySales6mo, currentMonthlySales, trend,
-    velocityTier, velocityLabel, salesRank, source,
-    rankDrops30, rankDrops90, rankDrops180,
-    rankAvg30, rankAvg90, rankAvg180,
-  };
-}
-
-// ============================================================
-// PRICE SELECTION
-// ============================================================
-
-function getCurrentValue(csvArray) {
-  if (!csvArray || csvArray.length < 2) return -1;
-  return csvArray[csvArray.length - 1];
-}
-
-// Get the Nth-cheapest offer from Keepa offers array, filtered by type and condition
-// type: 'used' = conditions 2-5, 'fba' = FBA used only
-// condition: 'like_new' (includes VG), 'good', 'acceptable', or null for all
-function getSlotPrice(product, slot, type = 'used', condition = null) {
-  const offers = product.offers;
-  if (!offers || !Array.isArray(offers) || offers.length === 0 || slot === null) return -1;
-
-  // Build allowed condition set
-  // new_sealed uses Keepa condition 1 (New)
-  let allowedConditions = null;
-  if (condition === 'new_sealed') allowedConditions = [1];
-  else if (condition === 'like_new') allowedConditions = [2, 3];
-  else if (condition === 'good') allowedConditions = [4];
-  else if (condition === 'acceptable') allowedConditions = [5];
-
-  const prices = [];
-  for (const offer of offers) {
-    // For new_sealed (condition 1), allow it; for used, require condition 2-5
-    if (allowedConditions) {
-      if (!allowedConditions.includes(offer.condition)) continue;
-    } else {
-      if (offer.condition < 2 || offer.condition > 5) continue;
-    }
-    if (type === 'fba' && !offer.isFBA) continue;
-
-    const csv = offer.offerCSV;
-    if (!csv || csv.length < 2) continue;
-
-    let price = -1;
-    for (let i = csv.length - 2; i >= 1; i -= 3) {
-      if (csv[i] > 0) { price = csv[i]; break; }
-    }
-    if (price <= 0) continue;
-    prices.push(price);
-  }
-
-  if (prices.length === 0) return -1;
-  prices.sort((a, b) => a - b);
-  const idx = Math.min(slot - 1, prices.length - 1);
-  return prices[idx];
-}
-
-// Legacy alias
-function getUsedSlotPrice(product, slot = 3) {
-  return getSlotPrice(product, slot, 'used');
-}
-
-// Full sell price selection using scouting tool trigger logic:
-// 1. Get FBA Slot N price (Nth cheapest FBA used offer)
-// 2. Get Used Slot N price (Nth cheapest used offer overall)
-// 3. Base price = higher of FBA Slot and Used Slot
-// 4. If selectBBifHigher and Used Buy Box > base → use Buy Box
-// 5. If selectBBifLower is false and Buy Box < base → ignore Buy Box
-// 6. Cap at: min(price, New3P × (1 - offNewBB), Amazon × (1 - offAmazon))
-function getSellPriceSource(product, hasCase = true, trigger = null, condition = null) {
-  const csv = product.csv || [];
-
-  // Raw price data
-  const usedBuyBox = csv[17] ? getCurrentValue(csv[17]) : -1;
-  const lowestUsed = csv[2] ? getCurrentValue(csv[2]) : -1;
-  const usedVeryGood = csv[10] ? getCurrentValue(csv[10]) : -1;
-  const usedGood = csv[11] ? getCurrentValue(csv[11]) : -1;
-  const new3p = csv[1] ? getCurrentValue(csv[1]) : -1;
-  const amazon = csv[0] ? getCurrentValue(csv[0]) : -1;
-
-  const offers = product.offers || [];
-  const usedOffers = offers.filter(o => o.condition >= 2 && o.condition <= 5);
-  const fbaOffers = offers.filter(o => o.condition >= 2 && o.condition <= 5 && o.isFBA);
-
-  // Slot prices from offers array
-  const fbaSlot = trigger?.fbaSlot;
-  const usedSlot = trigger?.usedSlot;
-  const fbaSlotPrice = fbaSlot ? getSlotPrice(product, fbaSlot, 'fba') : -1;
-  const usedSlotPrice = usedSlot ? getSlotPrice(product, usedSlot, 'used') : -1;
-
-  // Average used (condition-filtered when provided)
-  const avgUsed = getAverageUsedPrice(product, condition);
-
-  let selected = null;
-  let selectedPrice = -1;
-  let preCap = -1;
-
-  // Step 1: Base price = higher of FBA Slot and Used Slot
-  let basePrice = -1;
-  let baseSource = null;
-  if (fbaSlotPrice > 0 && usedSlotPrice > 0) {
-    if (fbaSlotPrice >= usedSlotPrice) { basePrice = fbaSlotPrice; baseSource = 'fbaSlot'; }
-    else { basePrice = usedSlotPrice; baseSource = 'usedSlot'; }
-  } else if (fbaSlotPrice > 0) {
-    basePrice = fbaSlotPrice; baseSource = 'fbaSlot';
-  } else if (usedSlotPrice > 0) {
-    basePrice = usedSlotPrice; baseSource = 'usedSlot';
-  }
-
-  // Step 2: Apply Used Buy Box selection rules
-  if (basePrice > 0 && usedBuyBox > 0 && trigger) {
-    if (trigger.selectBBifHigher && usedBuyBox > basePrice) {
-      basePrice = usedBuyBox;
-      baseSource = 'usedBuyBox_higher';
-    }
-    // selectBBifLower: false means we ignore Buy Box when lower (already handled by not using it)
-  }
-
-  if (basePrice > 0) {
-    selected = baseSource;
-    selectedPrice = basePrice;
-  }
-
-  // Fallback chain if no slot prices available
-  if (selectedPrice <= 0 && avgUsed > 0) {
-    selected = 'averageUsed';
-    selectedPrice = avgUsed;
-  }
-  if (selectedPrice <= 0 && lowestUsed > 0) {
-    selected = 'lowestUsed';
-    selectedPrice = lowestUsed;
-  }
-  if (selectedPrice <= 0 && new3p > 0) {
-    selected = 'new3p_estimated';
-    selectedPrice = Math.round(new3p * 0.60);
-  }
-
-  preCap = selectedPrice;
-
-  // Step 3: Apply price ceilings (% Off New BB, % Off Amazon)
-  if (selectedPrice > 0 && trigger) {
-    if (new3p > 0 && trigger.offNewBB > 0) {
-      const newCap = Math.round(new3p * (1 - trigger.offNewBB));
-      if (selectedPrice > newCap) {
-        selectedPrice = newCap;
-        selected = selected + '_capped_new';
+    if (rankDrops90 >= tier.min_rank_drops_90) {
+      // Secondary BSR gate
+      if (extractedFields.current_bsr != null &&
+          extractedFields.current_bsr > tier.bsr_ceiling) {
+        // Too deep in this tier's BSR range — try a lower tier
+        continue;
       }
-    }
-    if (amazon > 0 && trigger.offAmazon > 0) {
-      const amazonCap = Math.round(amazon * (1 - trigger.offAmazon));
-      if (selectedPrice > amazonCap) {
-        selectedPrice = amazonCap;
-        selected = selected + '_capped_amazon';
-      }
+      assignedTier = tier;
+      break;
     }
   }
 
-  // Apply case adjustment
-  const finalPrice = hasCase ? selectedPrice : Math.round(selectedPrice * 0.75);
+  if (!assignedTier) {
+    // Could be below min_rank_drops_90 threshold or BSR exceeded every tier
+    return rejectWith(trace, 4, 'Below all tier thresholds',
+      `drops90=${rankDrops90} bsr=${extractedFields.current_bsr}`);
+  }
+  trace.tier_assigned = assignedTier.tier;
 
-  return {
-    selected,
-    selectedPrice: finalPrice,
-    rawSelectedPrice: selectedPrice,
-    preCap: preCap !== selectedPrice ? preCap : null,
-    candidates: {
-      buyBoxUsed90: (product.stats?.avg90?.[32] > 0) ? product.stats.avg90[32] : null,
-      buyBoxUsed180: (product.stats?.avg180?.[32] > 0) ? product.stats.avg180[32] : null,
-      fbaSlotPrice: fbaSlotPrice > 0 ? fbaSlotPrice : null,
-      fbaUsedAvg: getFbaUsedAvgPrice(product) > 0 ? getFbaUsedAvgPrice(product) : null,
-      usedSlotPrice: usedSlotPrice > 0 ? usedSlotPrice : null,
-      averageUsed: avgUsed > 0 ? avgUsed : null,
-      usedBuyBox: usedBuyBox > 0 ? usedBuyBox : null,
-      lowestUsed: lowestUsed > 0 ? lowestUsed : null,
-      usedVeryGood: usedVeryGood > 0 ? usedVeryGood : null,
-      usedGood: usedGood > 0 ? usedGood : null,
-      new3p: new3p > 0 ? new3p : null,
-      newCap: new3p > 0 && trigger?.offNewBB ? Math.round(new3p * (1 - trigger.offNewBB)) : null,
-      amazon: amazon > 0 ? amazon : null,
-      amazonCap: amazon > 0 && trigger?.offAmazon ? Math.round(amazon * (1 - trigger.offAmazon)) : null,
-    },
-    condition: condition || 'all',
-    conditionPrices: getAllConditionPrices(product),
-    trigger: trigger ? { fbaSlot: trigger.fbaSlot, usedSlot: trigger.usedSlot, offNewBB: trigger.offNewBB, offAmazon: trigger.offAmazon } : null,
-    offersCount: offers.length,
-    usedOffersCount: usedOffers.length,
-    fbaOffersCount: fbaOffers.length,
+  // ===== STEP 5: Price determination (the spec §4.1 rule 1 change) =====
+  // Uses USED buy box (Keepa index 32), not new buy box — this is a used-media buyback.
+  const currentPrice = extractedFields.current_used_buybox_cents ?? extractedFields.current_new_3p_cents;
+  const avgPrice     = extractedFields.avg_90_day_used_buybox_cents;
+
+  if (currentPrice == null || currentPrice <= 0) {
+    return rejectWith(trace, 5, 'No active price');
+  }
+  if (avgPrice == null || avgPrice <= 0) {
+    return rejectWith(trace, 5, 'Insufficient price history');
+  }
+
+  const volatility = Math.abs(currentPrice - avgPrice) / avgPrice;
+  trace.volatility_ratio = volatility;
+
+  if (volatility > 0.30) {
+    return rejectWith(trace, 5, 'Price too volatile',
+      `volatility_ratio=${volatility.toFixed(3)}`);
+  }
+
+  const workingPrice = Math.min(currentPrice, avgPrice);
+  trace.working_price_cents = workingPrice;
+  trace.working_price_source = (workingPrice === currentPrice) ? 'current_buybox' : 'avg_90_day';
+
+  const minPrice = CATEGORY_MIN_PRICE_CENTS[category];
+  if (workingPrice < minPrice) {
+    return rejectWith(trace, 5, 'Sell price too low for viable margin',
+      `working_price=${workingPrice} min=${minPrice}`);
+  }
+
+  // ===== STEP 6: Competition check (simplified) =====
+  // Amazon-on-listing logic was REMOVED on 2026-04-10. CleanSlate sells
+  // used inventory and prices against Keepa index 32 (used buy box).
+  // Amazon almost always competes on the NEW buy box, not the used one,
+  // so penalizing the used-side offer based on new-side competition was
+  // logically inconsistent. The residual Amazon risk (Amazon crashes new
+  // price -> crashes used price) is already caught by Step 5's 30%
+  // volatility gate and Step 4's velocity floor — both fire the moment
+  // the used-side numbers move. Inventory cap (10/ASIN) limits lag
+  // exposure.
+  //
+  // extractedFields.amazon_is_seller is still extracted and stored in
+  // trace.keepa_fields for debugger visibility but no longer gates or
+  // penalizes anything here.
+  let competitionPenalty = 1.0;
+  if (extractedFields.fba_offer_count > 30 && workingPrice < 500) {
+    return rejectWith(trace, 6, 'Too competitive, low price');
+  } else if (extractedFields.fba_offer_count > 50) {
+    competitionPenalty = 0.90;
+  }
+  trace.competition_penalty_applied = competitionPenalty;
+
+  // ===== STEP 7: Fee calculation =====
+  const referralRate     = tt.getConfig('referral_fee_rate');
+  const closingFee       = tt.getConfig('closing_fee_cents');
+  const prepCost         = tt.getConfig('prep_cost_cents');
+  const inboundPerLb     = tt.getConfig('inbound_per_lb_cents');
+  const mediaMailReceive = tt.getConfig('media_mail_receive_cents');
+  const discBufferCfg    = tt.getConfig('disc_buffer_cents');
+  const rejectionReturn  = tt.getConfig('rejection_return_overhead_cents');
+  const storageReserve   = tt.getConfig('storage_reserve_cents');
+
+  const referralFee = Math.floor(workingPrice * referralRate);
+
+  const fbaFulfillmentFee = lookupFBAFee(
+    extractedFields.package_weight_g,
+    extractedFields.package_length_mm,
+    extractedFields.package_width_mm,
+    extractedFields.package_height_mm
+  );
+
+  const weightLbs = extractedFields.package_weight_g / 453.592;
+  const inboundShipping = Math.max(25, Math.floor(weightLbs * inboundPerLb));
+
+  const discBuffer = ['dvd', 'bluray', 'cd', 'game'].includes(category) ? discBufferCfg : 0;
+
+  const totalFees = referralFee + closingFee + fbaFulfillmentFee + prepCost +
+                    inboundShipping + mediaMailReceive + discBuffer +
+                    rejectionReturn + storageReserve;
+
+  trace.fees_breakdown = {
+    referral_fee_cents:             referralFee,
+    closing_fee_cents:              closingFee,
+    fba_fulfillment_fee_cents:      fbaFulfillmentFee,
+    prep_cost_cents:                prepCost,
+    inbound_shipping_cents:         inboundShipping,
+    media_mail_receive_cents:       mediaMailReceive,
+    disc_buffer_cents:              discBuffer,
+    rejection_return_overhead_cents: rejectionReturn,
+    storage_reserve_cents:          storageReserve,
+    total_fees_cents:               totalFees,
   };
-}
 
-// Get Keepa's actual FBA Pick&Pack fee when available
-function getKeepaFbaFee(product) {
-  return product.fbaFees?.pickAndPackFee > 0 ? product.fbaFees.pickAndPackFee : null;
-}
+  // ===== STEP 8: Net resale value =====
+  const netResale = workingPrice - totalFees;
+  trace.net_resale_cents = netResale;
 
-// Amazon condition codes: 2=LikeNew, 3=VeryGood, 4=Good, 5=Acceptable
-const CONDITION_MAP = {
-  like_new: 2,
-  very_good: 3,
-  good: 4,
-  acceptable: 5,
-};
-
-// Calculate average FBA used price, optionally filtered by condition
-// like_new includes both Keepa conditions 2 (Like New) AND 3 (Very Good)
-function getFbaUsedAvgPrice(product, conditionFilter = null) {
-  const offers = product.offers || [];
-  const fbaUsedPrices = [];
-
-  // like_new = Keepa conditions 2 + 3 combined
-  let allowedConditions = null;
-  if (conditionFilter === 'like_new') {
-    allowedConditions = [2, 3]; // Like New + Very Good
-  } else if (conditionFilter) {
-    allowedConditions = [CONDITION_MAP[conditionFilter]];
+  if (netResale <= 0) {
+    return rejectWith(trace, 8, 'No margin after fees');
   }
 
-  for (const offer of offers) {
-    if (offer.condition < 2 || offer.condition > 5 || !offer.isFBA) continue;
-    if (allowedConditions && !allowedConditions.includes(offer.condition)) continue;
-    const csv = offer.offerCSV;
-    if (!csv || csv.length < 2) continue;
-    for (let i = csv.length - 2; i >= 1; i -= 3) {
-      if (csv[i] > 0) { fbaUsedPrices.push(csv[i]); break; }
-    }
+  // ===== STEP 9: Inventory throttling (MVP: always 1.00) =====
+  // Phase 2 wires actual inventory_on_hand throttling.
+  trace.inventory_penalty_applied = 1.0;
+
+  // ===== STEP 10: ROI floor + final offer =====
+  const roiFloor = assignedTier.roi_floor_percent / 100;
+  trace.roi_floor_applied = assignedTier.roi_floor_percent;
+
+  const maxOfferCents = Math.floor(netResale / (1 + roiFloor));
+  const requiredMargin = Math.max(
+    assignedTier.min_flat_margin_cents,
+    netResale - maxOfferCents
+  );
+  trace.required_margin_cents = requiredMargin;
+
+  const offerBeforePenalties = netResale - requiredMargin;
+  const withPenalties = offerBeforePenalties * competitionPenalty * trace.inventory_penalty_applied;
+  const finalOffer = Math.floor(withPenalties / 5) * 5; // round down to nearest $0.05
+  trace.final_offer_cents = finalOffer;
+
+  // ===== STEP 11: Sanity checks =====
+  if (finalOffer < 25) {
+    return rejectWith(trace, 11, 'Margin too thin', `final_offer=${finalOffer}`);
   }
-  if (fbaUsedPrices.length === 0) return -1;
-  return Math.round(fbaUsedPrices.reduce((s, p) => s + p, 0) / fbaUsedPrices.length);
-}
-
-// Get all condition-specific prices — FBA Slot 1 per condition
-// like_new includes Very Good (merged)
-function getAllConditionPrices(product) {
-  return {
-    new_sealed: getSlotPrice(product, 1, 'fba', 'new_sealed'),
-    like_new: getSlotPrice(product, 1, 'fba', 'like_new'),
-    good: getSlotPrice(product, 1, 'fba', 'good'),
-    acceptable: getSlotPrice(product, 1, 'fba', 'acceptable'),
-    all: getSlotPrice(product, 1, 'fba', null),
-  };
-}
-
-// Get sell price using Keepa data — FBA Slot 1 (lowest FBA offer) per condition
-// This is the real competitive price, not inflated by overpriced listings
-// Priority: FBA Slot 1 (condition) → FBA Slot 1 (all) → Buy Box Used 90d → Lowest Used
-function getAverageUsedPrice(product, condition = null) {
-  const stats = product.stats || {};
-
-  // Primary: lowest FBA offer for this specific condition
-  if (condition) {
-    let slot1 = getSlotPrice(product, 1, 'fba', condition);
-    if (slot1 <= 0 && condition === 'new_sealed') {
-      slot1 = getSlotPrice(product, 1, 'used', condition);
-    }
-    if (slot1 > 0) return slot1;
+  if (finalOffer > workingPrice * 0.50) {
+    console.error('[offerEngine] Calculation error — offer exceeds 50% of working price', {
+      asin: extractedFields.asin, workingPrice, finalOffer,
+    });
+    return rejectWith(trace, 11, 'Engine calculation error',
+      `offer=${finalOffer} > 50%_of_${workingPrice}`);
   }
 
-  // Fallback: lowest FBA offer across all conditions
-  const slot1All = getSlotPrice(product, 1, 'fba', null);
-  if (slot1All > 0) return slot1All;
-
-  // Fallback: Buy Box Used 180-day average (more stable, resists price spikes)
-  const buyBoxUsed180 = stats.avg180?.[32];
-  if (buyBoxUsed180 > 0) return buyBoxUsed180;
-
-  // Fallback: Buy Box Used 90-day average
-  const buyBoxUsed90 = stats.avg90?.[32];
-  if (buyBoxUsed90 > 0) return buyBoxUsed90;
-
-  // Fallback: Lowest Used 90-day average from stats
-  const lowestUsed90 = stats.avg90?.[2];
-  if (lowestUsed90 > 0) return lowestUsed90;
-
-  // Last resort: current Lowest Used
-  const csv = product.csv || [];
-  const lowestUsed = csv[2] ? getCurrentValue(csv[2]) : -1;
-  if (lowestUsed > 500) return lowestUsed;
-
-  return -1;
+  return acceptWith(trace, finalOffer, assignedTier.tier);
 }
 
-// Main sell price function — uses trigger-based slot pricing with ceilings
-function getSellPrice(product, hasCase = true, trigger = null, condition = null) {
-  const source = getSellPriceSource(product, hasCase, trigger, condition);
-  return source.selectedPrice > 0 ? source.selectedPrice : -1;
-}
+// ------------------------------------------------------------
+// Legacy wrapper — preserves the old calculateOffer() signature
+// so existing routes (quote.js, admin.js) keep working without
+// modification beyond the engine refactor itself.
+//
+// Builds a legacy _debug payload from the new calculation_trace.
+// ------------------------------------------------------------
 
-// ============================================================
-// HELPERS
-// ============================================================
+/**
+ * @deprecated condition param — retained for API compatibility.
+ * The engine now uses blended buybox pricing per spec §4.1.
+ * This parameter is ignored and will be removed in a future sprint.
+ *
+ * @deprecated pricingMode param — same story. The old scouting vs buyback
+ * bifurcation is gone; the engine produces a single spec-compliant offer.
+ *
+ * TODO: Remove condition and pricingMode params after all callers updated
+ * (tracked for cleanup sprint).
+ */
+function calculateOffer(product, hasCase = true, pricingMode = 'buyback', condition = null, _precomputed = null) {
+  if (pricingMode && pricingMode !== 'buyback') warnDeprecated('pricingMode', pricingMode);
+  if (condition != null) warnDeprecated('condition', condition);
 
-function getWeightLbs(product) {
-  const grams = product.packageWeight || product.itemWeight || DEFAULT_WEIGHT_GRAMS;
-  return grams * 0.0022046;
-}
+  // Accept precomputed engine result to avoid running the 11-step algorithm twice.
+  // Callers that already ran runOfferEngine() pass { extracted, gatedResult, engineResult }.
+  const extracted = _precomputed?.extracted || extractKeepaFields(product);
+  const gatedResult = _precomputed?.gatedResult || isGated(product);
+  const result = _precomputed?.engineResult || runOfferEngine(product, extracted, { gatedResult });
 
-function getSalesRank(product) {
-  const csv = product.csv || [];
-  return getCurrentValue(csv[3]);
-}
+  const category = extracted.category_root || result.calculation_trace?.category || null;
+  const isDisc = ['dvd', 'bluray', 'cd', 'game'].includes(category);
 
-function getProductMeta(product, category, hasCase) {
-  const isDisc = ['dvd', 'cd', 'game'].includes(category);
-  return {
+  const meta = {
     title: product.title || 'Unknown Item',
-    asin: product.asin || null,
-    imageUrl: product.imagesCSV ? `https://images-na.ssl-images-amazon.com/images/I/${product.imagesCSV.split(',')[0]}` : null,
-    category: category || null,
+    asin: extracted.asin,
+    imageUrl: product.imagesCSV
+      ? `https://images-na.ssl-images-amazon.com/images/I/${product.imagesCSV.split(',')[0]}`
+      : null,
+    category,
     isDisc,
     hasCase,
   };
-}
 
-function cents(v) { return `$${(v / 100).toFixed(2)}`; }
+  // Build legacy _debug shape that admin.js reads.
+  // Fields admin.js uses: sellPrice, priceSource, fees, profitAnalysis, velocity, weightLbs
+  const trace = result.calculation_trace;
+  const _debug = buildLegacyDebug(trace, extracted, result);
 
-// ============================================================
-// MAIN OFFER CALCULATION
-// ============================================================
-
-// pricingMode: 'scouting' = FBA Slot trigger logic (admin), 'buyback' = average used (customer)
-// condition: 'like_new', 'very_good', 'good', 'acceptable', or null for all
-function calculateOffer(product, hasCase = true, pricingMode = 'buyback', condition = null) {
-  const category = detectCategory(product);
-  const meta = getProductMeta(product, category, hasCase);
-  const velocity = getVelocity(product, category);
-
-  if (!category) {
-    return { ...meta, status: 'rejected', reason: 'unsupported_category', message: "Sorry, we only accept books, DVDs, CDs, and video games", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity } };
+  if (!result.accepted) {
+    return {
+      ...meta,
+      status: 'rejected',
+      reason: result.rejection_reason || 'unknown',
+      message: humanizeRejection(result.rejection_reason),
+      offerCents: 0,
+      offerDisplay: '$0.00',
+      _debug,
+    };
   }
 
-  // Check if item is gated on Amazon
-  const gatingCheck = isGated(product);
-  if (gatingCheck.gated) {
-    return { ...meta, status: 'rejected', reason: 'brand_gated', message: "Sorry, we're unable to accept this item at this time", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity, gating: gatingCheck } };
-  }
-
-  const salesRank = velocity.salesRank;
-  // Use the WORSE of current rank vs 90-day average rank for tier selection
-  // This prevents items with a temporary rank spike from getting T1 pricing
-  // when they're actually T3/T4 sellers on average
-  const rankAvg90 = velocity.rankAvg90;
-  const effectiveRank = (rankAvg90 && rankAvg90 > salesRank) ? rankAvg90 : salesRank;
-  let trigger = getTrigger(category, effectiveRank);
-  if (!trigger || trigger.reject) {
-    return { ...meta, status: 'rejected', reason: 'rank_too_high', message: "Sorry, there's not enough demand for this item right now", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity, salesRank, effectiveRank, trigger: trigger || null } };
-  }
-
-  // Velocity adjustments using 6-month baseline + 30-day trend
-  const monthlySold = velocity.monthlySales; // 6-month avg (primary) or fallback
-  const avg6mo = velocity.avgMonthlySales6mo;
-  const current30d = velocity.currentMonthlySales;
-  const trend = velocity.trend;
-  const tiers = TRIGGERS[category];
-
-  // Promote/demote based on actual sales volume
-  if (monthlySold >= 50 && trigger.tier > 1) {
-    const t1 = tiers.find(t => t.tier === 1);
-    if (t1) trigger = t1;
-  } else if (monthlySold < 5 && trigger.tier === 1) {
-    const t2 = tiers.find(t => t.tier === 2);
-    if (t2) trigger = t2;
-  } else if (monthlySold < 2 && trigger.tier <= 2) {
-    const t3 = tiers.find(t => t.tier === 3);
-    if (t3) trigger = t3;
-    else {
-      return { ...meta, status: 'rejected', reason: 'no_recent_sales', message: "Sorry, this item hasn't sold recently enough for us to make an offer", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity, salesRank } };
-    }
-  }
-
-  // Trend adjustment: if item is decelerating (current 30d < 50% of 6mo avg), demote one tier
-  // This catches items that WERE selling but are slowing down
-  if (trend === 'decelerating' && trigger.tier <= 2) {
-    const nextTier = tiers.find(t => t.tier === trigger.tier + 1);
-    if (nextTier && !nextTier.reject) trigger = nextTier;
-  }
-
-  const targetProfit = trigger.targetProfit;
-
-  // Check if Amazon is a seller on this listing — reject T3+ items where Amazon competes
-  if (trigger.rejectIfAmazon) {
-    const amazonPrice = product.csv?.[0] ? getCurrentValue(product.csv[0]) : -1;
-    const isAmazonOnListing = amazonPrice > 0;
-    if (isAmazonOnListing) {
-      return { ...meta, status: 'rejected', reason: 'amazon_on_listing', message: "Amazon is selling this item directly — we can't compete on slower sellers", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity, salesRank, trigger, amazonPrice } };
-    }
-  }
-
-  // Scouting mode: use FBA Slot / Used Slot trigger-based pricing
-  // Buyback mode: use condition-specific FBA average for accurate offers
-  const priceSource = pricingMode === 'scouting'
-    ? getSellPriceSource(product, hasCase, trigger, condition)
-    : getSellPriceSource(product, hasCase, null, condition);
-  let sellPrice = priceSource.selectedPrice;
-  if (sellPrice <= 0) {
-    return { ...meta, status: 'rejected', reason: 'no_price', message: "Sorry, we can't find a current price for this item", offerCents: 0, offerDisplay: '$0.00', _debug: { velocity, priceSource } };
-  }
-
-  // Seasonal price check: compare current pricing window vs yearly average
-  // If current price is significantly above the yearly average, it's likely a seasonal spike
-  // Use the yearly average as a ceiling to avoid overpaying during spikes
-  const stats = product.stats || {};
-  let seasonalAdjustment = null;
-  if (pricingMode === 'buyback') {
-    // Compare sell price index across time windows
-    // For Buy Box Used (index 32) or Lowest Used (index 2)
-    const priceIdx = stats.avg90?.[32] > 0 ? 32 : 2;
-    const avg90Price = stats.avg90?.[priceIdx] > 0 ? stats.avg90[priceIdx] : 0;
-    const avg365Price = stats.avg365?.[priceIdx] > 0 ? stats.avg365[priceIdx] : 0;
-
-    if (avg90Price > 0 && avg365Price > 0) {
-      const ratio = avg90Price / avg365Price;
-
-      if (ratio > 1.3) {
-        // Current 90d is 30%+ above yearly average — seasonal spike
-        // Cap sell price at the yearly average to be conservative
-        const cappedPrice = avg365Price;
-        if (sellPrice > cappedPrice) {
-          seasonalAdjustment = {
-            type: 'spike_cap',
-            avg90: avg90Price,
-            avg365: avg365Price,
-            ratio: Math.round(ratio * 100) / 100,
-            originalSellPrice: sellPrice,
-            cappedTo: cappedPrice,
-          };
-          sellPrice = cappedPrice;
-        }
-      } else if (ratio < 0.7) {
-        // Current 90d is 30%+ below yearly average — seasonal dip
-        // Price might recover but we're buying in a dip — still use current price but note it
-        seasonalAdjustment = {
-          type: 'seasonal_dip',
-          avg90: avg90Price,
-          avg365: avg365Price,
-          ratio: Math.round(ratio * 100) / 100,
-          note: 'Price is below yearly average — may recover',
-        };
-        // Don't change sellPrice — we use current market, just flag it
-      }
-    }
-  }
-
-  const weightLbs = getWeightLbs(product);
-  const isDisc = meta.isDisc;
-
-  const referralFee = Math.round(sellPrice * REFERRAL_RATE);
-  // Use Keepa's actual FBA fee when available, fall back to our weight-based lookup
-  const fbaFee = getKeepaFbaFee(product) || getFbaFee(weightLbs);
-  const inboundShip = Math.round(weightLbs * INBOUND_SHIP_PER_LB);
-  const customerShip = getMediaMailCost(weightLbs);
-  const discBuffer = isDisc ? DISC_BUFFER : 0;
-
-  // Amazon fees (taken from revenue)
-  const amazonFees = referralFee + CLOSING_FEE + fbaFee;
-  // Our operational costs (we pay regardless)
-  const ourCosts = PREP_FEE + inboundShip + customerShip + discBuffer;
-  // Net revenue after all fees and costs (before customer payout)
-  const profitPool = sellPrice - amazonFees - ourCosts;
-
-  const roiFloor = trigger.roiFloor || 30;
-
-  // Competition adjustment: more used sellers = higher profit floor needed
-  // Too few sellers (0-1) = price might be artificially high, demote
-  // 2-15 = healthy, no change
-  // 16-25 = crowded, increase profit floor 25%
-  // 25+ = race to bottom, increase profit floor 50%
-  const usedSellerCount = priceSource.usedOffersCount || 0;
-  let profitFloorMultiplier = 1.0;
-  if (usedSellerCount <= 1) {
-    // Very few sellers — price might be unreliable/inflated
-    // Demote tier if we haven't already
-    if (trigger.tier === 1) {
-      const t2 = tiers.find(t => t.tier === 2);
-      if (t2) trigger = t2;
-    }
-  } else if (usedSellerCount >= 25) {
-    profitFloorMultiplier = 1.5; // 50% higher profit floor
-  } else if (usedSellerCount >= 16) {
-    profitFloorMultiplier = 1.25; // 25% higher profit floor
-  }
-
-  let offer, ourProfit, roi;
-
-  if (pricingMode === 'buyback') {
-    // BUYBACK MODE: Customer offer = profitPool / (1 + roiFloor/100)
-    // If profit pool is too thin but sell price exists, offer a minimum floor
-    // This catches low-value items (cheap CDs, old DVDs) where fees eat the margin
-    // but we can still make a few dollars on them
-    const MIN_OFFER = 10; // $0.10 minimum — below this, not worth it for anyone
-
-    if (profitPool > 0) {
-      offer = Math.floor(profitPool / (1 + roiFloor / 100));
-    } else {
-      offer = 0;
-    }
-
-    if (offer < MIN_OFFER) {
-      offer = 0;
-    }
-    ourProfit = profitPool - offer;
-    roi = offer > 0 ? Math.round((ourProfit / offer) * 100) : 0;
-
-    // Profit floor check: ensure we make at least the tier's minimum profit
-    // Adjusted by competition — more sellers means we need more buffer
-    const profitFloor = Math.round((trigger.profitFloor || 200) * profitFloorMultiplier);
-    if (offer > 0 && ourProfit < profitFloor) {
-      // Try reducing the offer to meet the profit floor
-      const adjustedOffer = profitPool - profitFloor;
-      if (adjustedOffer >= MIN_OFFER) {
-        offer = adjustedOffer;
-        ourProfit = profitFloor;
-        roi = offer > 0 ? Math.round((ourProfit / offer) * 100) : 0;
-      } else {
-        offer = 0; // Can't meet profit floor — reject
-      }
-    }
-  } else {
-    // SCOUTING MODE: Fixed target profit, ROI based on buy cost ($0.22)
-    offer = sellPrice - amazonFees - ourCosts - BUY_COST - targetProfit;
-    ourProfit = sellPrice - amazonFees - ourCosts - BUY_COST;
-    roi = BUY_COST > 0 ? Math.round((ourProfit / BUY_COST) * 100) : 0;
-  }
-
-  const profitMargin = sellPrice > 0 ? Math.round((ourProfit / sellPrice) * 100) : 0;
-  const meetsTargetProfit = offer > 0;
-  const meetsROI = roi >= roiFloor;
-  const buySignal = (meetsTargetProfit && meetsROI) ? 'BUY' : 'PASS';
-
-  // Build debug payload
-  const totalDeductions = sellPrice - offer;
-  const _debug = {
-    velocity,
-    priceSource,
-    sellPrice,
-    seasonalAdjustment,
-    competitionAdjustment: { usedSellerCount, profitFloorMultiplier },
-    pricingMode,
-    weightLbs: Math.round(weightLbs * 100) / 100,
-    keepaFbaFee: getKeepaFbaFee(product),
-    fees: {
-      referralFee,
-      closingFee: CLOSING_FEE,
-      fbaFee,
-      prepFee: PREP_FEE,
-      inboundShip,
-      customerShip,
-      discBuffer,
-      ...(pricingMode === 'scouting' ? { buyCost: BUY_COST, targetProfit } : {}),
-      amazonFees,
-      ourCosts,
-      profitPool,
-      totalDeductions,
-    },
-    profitAnalysis: {
-      ourProfit,
-      roi,
-      roiFloor,
-      profitMargin,
-      buySignal,
-      meetsTargetProfit,
-      meetsROI,
-      targetProfitCents: targetProfit,
-    },
-  };
-
-  if (offer <= 0) {
-    return { ...meta, status: 'rejected', reason: 'price_too_low', message: "Sorry, the resale value is too low for us to make an offer on this item", offerCents: 0, offerDisplay: '$0.00', _debug };
-  }
-
+  const offerCents = result.offer_cents;
   let status, color, label;
-  if (offer >= 150) {
+  if (offerCents >= 150) {
     status = 'accepted'; color = 'green'; label = "We'll Buy This!";
   } else {
-    status = 'low'; color = 'yellow'; label = "Low Offer";
+    status = 'low'; color = 'yellow'; label = 'Low Offer';
   }
 
   return {
@@ -827,16 +670,156 @@ function calculateOffer(product, hasCase = true, pricingMode = 'buyback', condit
     status,
     color,
     label,
-    offerCents: Math.round(offer),
-    offerDisplay: cents(Math.round(offer)),
+    offerCents,
+    offerDisplay: `$${(offerCents / 100).toFixed(2)}`,
+    tier: result.tier,
     _debug,
   };
 }
 
+function buildLegacyDebug(trace, extracted, result) {
+  const fees = trace.fees_breakdown || {};
+  const workingPrice = trace.working_price_cents;
+  const netResale = trace.net_resale_cents;
+  const finalOffer = trace.final_offer_cents || 0;
+
+  // Rough ROI for display (admin profit panel)
+  const ourProfit = netResale != null && finalOffer > 0
+    ? netResale - finalOffer
+    : 0;
+  const roi = finalOffer > 0 ? Math.round((ourProfit / finalOffer) * 100) : 0;
+  const profitMargin = workingPrice && workingPrice > 0 && ourProfit != null
+    ? Math.round((ourProfit / workingPrice) * 100)
+    : 0;
+
+  return {
+    // Legacy fields admin.js reads
+    sellPrice: workingPrice,
+    priceSource: trace.working_price_source
+      ? { selected: trace.working_price_source, selectedPrice: workingPrice }
+      : null,
+    weightLbs: extracted.package_weight_g != null
+      ? Math.round((extracted.package_weight_g / 453.592) * 100) / 100
+      : null,
+    keepaFbaFee: fees.fba_fulfillment_fee_cents ?? null,
+    fees: {
+      referralFee:   fees.referral_fee_cents ?? 0,
+      closingFee:    fees.closing_fee_cents ?? 0,
+      fbaFee:        fees.fba_fulfillment_fee_cents ?? 0,
+      prepFee:       fees.prep_cost_cents ?? 0,
+      inboundShip:   fees.inbound_shipping_cents ?? 0,
+      customerShip:  fees.media_mail_receive_cents ?? 0,
+      discBuffer:    fees.disc_buffer_cents ?? 0,
+      amazonFees: (fees.referral_fee_cents ?? 0) + (fees.closing_fee_cents ?? 0) + (fees.fba_fulfillment_fee_cents ?? 0),
+      ourCosts: (fees.prep_cost_cents ?? 0) + (fees.inbound_shipping_cents ?? 0) + (fees.media_mail_receive_cents ?? 0) + (fees.disc_buffer_cents ?? 0) + (fees.rejection_return_overhead_cents ?? 0) + (fees.storage_reserve_cents ?? 0),
+      profitPool: netResale,
+      totalDeductions: workingPrice != null ? workingPrice - finalOffer : null,
+    },
+    profitAnalysis: {
+      ourProfit,
+      roi,
+      roiFloor: trace.roi_floor_applied,
+      profitMargin,
+      buySignal: result.accepted ? 'BUY' : 'PASS',
+      meetsTargetProfit: result.accepted,
+      meetsROI: result.accepted,
+      requiredMarginCents: trace.required_margin_cents,
+    },
+    velocity: {
+      salesRankDrops90: extracted.sales_rank_drops_90,
+      salesRankDrops180: extracted.sales_rank_drops_180,
+      salesRankDrops30: extracted.sales_rank_drops_30,
+      salesRank: extracted.current_bsr,
+      source: 'sales_rank_drops_90',
+    },
+    competitionAdjustment: {
+      fbaOfferCount: extracted.fba_offer_count,
+      amazonOnListing: extracted.amazon_is_seller,
+      penaltyApplied: trace.competition_penalty_applied,
+    },
+    // Full trace (for quote_items logging + future Quote Debugger)
+    calculation_trace: trace,
+    rejection_step: trace.rejection_step,
+  };
+}
+
+// Map internal rejection reasons to customer-friendly messages.
+// If the reason is already a full customer-facing sentence (ends in a
+// period), we pass it through unchanged — that's the case for the new
+// Step 1 and Step 4 category-gate messages.
+function humanizeRejection(reason) {
+  if (!reason) return "Sorry, we can't make an offer on this item right now.";
+  // Pass-through for reasons that are already full customer sentences
+  // (the new Step 1 barcode-not-recognized message ends in a period).
+  if (/[.!?]$/.test(reason)) return reason;
+  const map = {
+    'We only buy books, DVDs, Blu-rays, CDs, and video games':
+      'Sorry, we only buy books, DVDs, Blu-rays, CDs, and video games.',
+    'Insufficient recent data': "Sorry, we don't have enough recent data on this item.",
+    'Hazmat restricted': 'Sorry, we cannot accept hazmat items.',
+    'Adult content restricted': 'Sorry, we do not accept adult content.',
+    'Listing deprecated': "Sorry, the listing for this item is no longer active.",
+    'Insufficient product data': "Sorry, we don't have enough data on this item.",
+    'Oversize': 'Sorry, this item is too large for our shipping program.',
+    'Overweight': 'Sorry, this item is too heavy for our shipping program.',
+    'Category not accepted': 'Sorry, we only accept books, DVDs, Blu-rays, CDs, and video games.',
+    'Item on cooldown list': "Sorry, we can't accept this item right now.",
+    'We have enough of this item right now': "Sorry, we have enough of this item right now.",
+    'Low velocity — sold fewer than 4 times in 90 days': "Sorry, there's not enough demand for this item.",
+    'Below all tier thresholds': "Sorry, there's not enough demand for this item.",
+    'No active price': "Sorry, we can't find a current price for this item.",
+    'Insufficient price history': "Sorry, we don't have enough pricing history on this item.",
+    'Price too volatile': "Sorry, this item's price is too unstable right now.",
+    'Sell price too low for viable margin': 'Sorry, the resale value is too low.',
+    'Too competitive, low price': "Sorry, this item is too competitive.",
+    'No margin after fees': 'Sorry, the resale value is too low for us to make an offer.',
+    'Margin too thin': 'Sorry, the resale value is too low for us to make an offer.',
+    'Engine calculation error': "Sorry, we hit an error pricing this item. Please try again.",
+  };
+  return map[reason] || "Sorry, we can't accept this item.";
+}
+
+// ------------------------------------------------------------
+// Removed-exports stubs — throw loudly so forgotten callers surface
+// ------------------------------------------------------------
+function _removed(name) {
+  return () => {
+    throw new Error(
+      `[offerEngine] ${name}() was removed in the 2026-04-10 spec alignment refactor. ` +
+      `Use runOfferEngine() or calculateOffer() instead. See docs/CLEANSLATE_DB_AND_ENGINE.md.`
+    );
+  };
+}
+
 module.exports = {
-  calculateOffer, detectCategory, getSellPrice, getSellPriceSource,
-  isGated, GATED_ASINS, GATED_BRAND_PATTERNS,
-  getSlotPrice, getUsedSlotPrice, getAllConditionPrices, getWeightLbs, getSalesRank,
-  getTargetProfit, getTrigger, getFbaFee, getKeepaFbaFee, getMediaMailCost,
-  getVelocity, getAverageUsedPrice, getFbaUsedAvgPrice, TRIGGERS,
+  // New spec-aligned exports
+  runOfferEngine,
+  extractKeepaFields,
+  detectCategory,
+  isGated,
+  lookupFBAFee,
+  newTrace,
+  CATEGORY_BLACKLIST,
+  CATEGORY_MIN_PRICE_CENTS,
+  GATED_ASINS,
+  GATED_BRAND_PATTERNS,
+
+  // Legacy wrapper still working (admin.js + quote.js)
+  calculateOffer,
+
+  // Removed — throw on call
+  getTrigger:           _removed('getTrigger'),
+  getSellPriceSource:   _removed('getSellPriceSource'),
+  getSlotPrice:         _removed('getSlotPrice'),
+  getUsedSlotPrice:     _removed('getUsedSlotPrice'),
+  getAllConditionPrices:_removed('getAllConditionPrices'),
+  getAverageUsedPrice:  _removed('getAverageUsedPrice'),
+  getFbaUsedAvgPrice:   _removed('getFbaUsedAvgPrice'),
+  getTargetProfit:      _removed('getTargetProfit'),
+  getVelocity:          _removed('getVelocity'),
+  getFbaFee:            _removed('getFbaFee'),
+  getKeepaFbaFee:       _removed('getKeepaFbaFee'),
+  getMediaMailCost:     _removed('getMediaMailCost'),
+  getSellPrice:         _removed('getSellPrice'),
+  TRIGGERS:             null, // consumers reading TRIGGERS will get null and can be updated to getTiersForCategory
 };

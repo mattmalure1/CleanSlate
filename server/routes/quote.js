@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const keepa = require('../services/keepa');
-const { calculateOffer } = require('../services/offerEngine');
+const { calculateOffer, runOfferEngine, extractKeepaFields, isGated } = require('../services/offerEngine');
 const db = require('../services/supabase');
 
 // GET /api/quote?code=ISBN_OR_UPC&hasCase=true
@@ -22,8 +22,13 @@ router.get('/api/quote', async (req, res) => {
 
     const product = keepaResponse.products[0];
     const hasCaseBool = hasCase !== 'false';
-    // Default to "good" condition — customers don't pick condition, we assess after receiving
-    const offer = calculateOffer(product, hasCaseBool, 'buyback', 'good');
+
+    // Run the engine once, then pass the result to the legacy wrapper to avoid
+    // running the 11-step algorithm twice per request.
+    const extracted = extractKeepaFields(product);
+    const gatedResult = isGated(product);
+    const engineResult = runOfferEngine(product, extracted, { gatedResult });
+    const offer = calculateOffer(product, hasCaseBool, 'buyback', null, { extracted, gatedResult, engineResult });
 
     res.json({
       status: offer.status,
@@ -39,15 +44,21 @@ router.get('/api/quote', async (req, res) => {
       imageUrl: offer.imageUrl || null,
       message: offer.message || null,
       reason: offer.reason || null,
+      tier: offer.tier || null,
     });
 
-    // Fire-and-forget quote logging
+    // Fire-and-forget: legacy quote_log for conversion analytics
     db.logQuote({
       barcode: code, asin: offer.asin, title: offer.title, category: offer.category,
       condition: 'good', hasCase: hasCaseBool, sellPriceCents: offer._debug?.sellPrice || null,
       offerCents: offer.offerCents, status: 'quoted', quoteColor: offer.color,
       pricingMode: 'buyback', sessionId: null,
     }).catch(err => console.error('Quote log error:', err.message));
+
+    // Fire-and-forget: new quote_items with full calculation_trace (spec §1.2).
+    // Powers the Quote Debugger and rejection-reason analytics.
+    db.logQuoteItem({ upc: code, offerOutput: engineResult })
+      .catch(err => console.error('Quote item log error:', err.message));
   } catch (err) {
     console.error('Quote error:', err.message);
     res.status(500).json({ error: 'Failed to get quote. Please try again.' });
@@ -110,8 +121,10 @@ router.post('/api/bulk-quote', async (req, res) => {
     }
 
     const hasCaseBool = hasCase !== false;
-    const validConditions = ['new_sealed', 'like_new', 'good', 'acceptable'];
-    const cond = validConditions.includes(condition) ? condition : null;
+    // NOTE: condition param is deprecated in the engine (spec §4.1 uses blended buybox).
+    // We still accept it from the client for API compatibility but it is ignored.
+    // eslint-disable-next-line no-unused-vars
+    const _deprecatedCondition = condition;
     const results = [];
 
     for (const rawCode of codes) {
@@ -129,7 +142,15 @@ router.post('/api/bulk-quote', async (req, res) => {
         }
 
         const product = keepaResponse.products[0];
-        const offer = calculateOffer(product, hasCaseBool, 'buyback', cond);
+        const extracted = extractKeepaFields(product);
+        const gatedResult = isGated(product);
+        const engineResult = runOfferEngine(product, extracted, { gatedResult });
+        const offer = calculateOffer(product, hasCaseBool, 'buyback', null, { extracted, gatedResult, engineResult });
+
+        // Fire-and-forget quote_items logging (reuses the already-computed result)
+        db.logQuoteItem({ upc: code, offerOutput: engineResult })
+          .catch(err => console.error('Bulk quote item log error:', err.message));
+
         results.push({
           code,
           status: offer.status,

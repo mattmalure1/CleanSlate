@@ -114,6 +114,10 @@ export default function AdminPage() {
         <a href="/admin/quotes" className="text-text-muted hover:text-brand-700 flex items-center gap-1">
           <ClipboardCheck size={14} /> Quotes
         </a>
+        <span className="text-text-muted">/</span>
+        <a href="/admin/debug-quote" className="text-brand-700 hover:text-brand-800 flex items-center gap-1 font-semibold">
+          <Search size={14} /> Quote Debugger
+        </a>
       </div>
 
       <h1 className="font-display font-bold text-2xl text-text-primary mb-6">

@@ -3,6 +3,10 @@ import { X, Camera, ShoppingCart, Trash2, Check, Loader2 } from 'lucide-react';
 import { apiUrl } from '../api';
 import { useCart } from '../context/CartContext';
 
+// Session-level cache: avoids re-fetching the same barcode within one browser session.
+// Survives component mount/unmount cycles (e.g. close scanner, re-open).
+const sessionCache = new Map();
+
 export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
   const { addItem } = useCart();
   const onScanRef = useRef(onScan);
@@ -11,44 +15,64 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
   const [error, setError] = useState(null);
   const [ready, setReady] = useState(false);
   const [items, setItems] = useState([]);
-  const [lookingUp, setLookingUp] = useState(null);
+  const [pendingLookups, setPendingLookups] = useState(new Set());
   const recentScans = useRef(new Set());
   const stopped = useRef(false);
 
   onScanRef.current = onScan;
   onCloseRef.current = onClose;
 
-  // Lookup a scanned code — auto-adds accepted items to cart
-  async function lookupCode(code) {
-    setLookingUp(code);
-    try {
-      const res = await fetch(apiUrl(`/api/quote?code=${encodeURIComponent(code)}&hasCase=true&condition=good`));
-      const data = await res.json();
-      if (!res.ok) {
-        setItems(prev => [{ id: crypto.randomUUID(), code, title: 'Not found', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 }, ...prev]);
-      } else {
-        const item = { id: crypto.randomUUID(), code, ...data };
-        setItems(prev => [item, ...prev]);
-        // Auto-add accepted items to cart immediately
-        if (data.status === 'accepted' || data.status === 'low') {
-          addItem({
-            asin: data.asin,
-            title: data.title,
-            imageUrl: data.imageUrl,
-            offerCents: data.offerCents,
-            offerDisplay: data.offerDisplay,
-            category: data.category,
-            isDisc: data.isDisc,
-            hasCase: data.hasCase,
-            color: data.color,
-            label: data.label,
-          });
-        }
-      }
-    } catch {
-      setItems(prev => [{ id: crypto.randomUUID(), code, title: 'Lookup failed', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 }, ...prev]);
+  function addResult(item) {
+    setItems(prev => [item, ...prev]);
+    if (item.status === 'accepted' || item.status === 'low') {
+      addItem({
+        asin: item.asin,
+        title: item.title,
+        imageUrl: item.imageUrl,
+        offerCents: item.offerCents,
+        offerDisplay: item.offerDisplay,
+        category: item.category,
+        isDisc: item.isDisc,
+        hasCase: item.hasCase,
+        color: item.color,
+        label: item.label,
+      });
     }
-    setLookingUp(null);
+  }
+
+  // Non-blocking lookup — scanner keeps running while this executes.
+  // Uses session cache for instant re-scans.
+  function lookupCode(code) {
+    // Session cache hit → instant, no API call
+    if (sessionCache.has(code)) {
+      const cached = sessionCache.get(code);
+      addResult({ id: crypto.randomUUID(), code, ...cached });
+      return;
+    }
+
+    // Track this code as pending (non-blocking indicator)
+    setPendingLookups(prev => new Set(prev).add(code));
+
+    fetch(apiUrl(`/api/quote?code=${encodeURIComponent(code)}&hasCase=true`))
+      .then(res => res.json().then(data => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          addResult({ id: crypto.randomUUID(), code, title: 'Not found', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 });
+        } else {
+          sessionCache.set(code, data);
+          addResult({ id: crypto.randomUUID(), code, ...data });
+        }
+      })
+      .catch(() => {
+        addResult({ id: crypto.randomUUID(), code, title: 'Lookup failed', status: 'rejected', offerDisplay: '$0.00', offerCents: 0 });
+      })
+      .finally(() => {
+        setPendingLookups(prev => {
+          const next = new Set(prev);
+          next.delete(code);
+          return next;
+        });
+      });
   }
 
   useEffect(() => {
@@ -74,11 +98,20 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
         );
         const cameraId = backCam ? backCam.id : devices[devices.length - 1].id;
 
+        // Scan region uses a percentage of the video feed — much wider than
+        // the old fixed 500×200px box. This lets barcodes be read from further
+        // away because more of the camera frame is analyzed. fps bumped from
+        // 15 → 20 for faster detection cycles.
+        const qrboxFunction = (viewfinderWidth, viewfinderHeight) => ({
+          width: Math.floor(viewfinderWidth * 0.85),
+          height: Math.floor(viewfinderHeight * 0.40),
+        });
+
         await scanner.start(
           { deviceId: { exact: cameraId } },
           {
-            fps: 15,
-            qrbox: { width: 500, height: 200 },
+            fps: 20,
+            qrbox: qrboxFunction,
             videoConstraints: {
               deviceId: { exact: cameraId },
               width: { ideal: 1920 },
@@ -132,9 +165,8 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
   }, []);
 
   function handleClose() {
-    // Warn if there are items still being looked up
-    if (lookingUp) {
-      if (!window.confirm('A lookup is still in progress. Close anyway?')) return;
+    if (pendingLookups.size > 0) {
+      if (!window.confirm(`${pendingLookups.size} lookup(s) still in progress. Close anyway?`)) return;
     }
 
     stopped.current = true;
@@ -199,11 +231,11 @@ export default function BarcodeScanner({ onScan, onClose, rapid = false }) {
           </div>
         )}
 
-        {/* Looking up indicator */}
-        {lookingUp && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-2">
+        {/* Non-blocking lookup indicator — scanner keeps running */}
+        {pendingLookups.size > 0 && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-brand-600 text-white text-xs font-semibold px-4 py-2 rounded-full flex items-center gap-2 shadow-lg">
             <Loader2 size={14} className="animate-spin" />
-            Looking up {lookingUp}...
+            Looking up {pendingLookups.size === 1 ? [...pendingLookups][0] : `${pendingLookups.size} items`}...
           </div>
         )}
       </div>

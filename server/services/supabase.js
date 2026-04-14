@@ -350,6 +350,42 @@ async function listQuoteLogs({ search, category, status, limit = 100, offset = 0
   return data || [];
 }
 
+// Log a quote_items row (spec §1.2) — the full calculation_trace audit record.
+// Accepts the output of runOfferEngine() plus upc and optional quote_id.
+// Fire-and-forget; errors are logged but not thrown so quote requests don't fail.
+async function logQuoteItem({ upc, quoteId, offerOutput }) {
+  if (!supabase) return null;
+  if (!offerOutput || !offerOutput.calculation_trace) return null;
+
+  const trace = offerOutput.calculation_trace;
+  const row = {
+    quote_id: quoteId || null,
+    upc,
+    asin: trace.asin || null,
+    category: trace.category || null,
+    title: trace.keepa_fields?.title || null,
+    offer_cents: offerOutput.offer_cents ?? null,
+    accepted: !!offerOutput.accepted,
+    rejection_reason: offerOutput.rejection_reason || null,
+    rejection_step: trace.rejection_step ?? null,
+    tier: offerOutput.tier || null,
+    keepa_data_timestamp: offerOutput.keepa_data_timestamp || new Date(),
+    calculation_trace: trace,
+  };
+
+  const { data, error } = await supabase
+    .from('quote_items')
+    .insert(row)
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('[supabase] logQuoteItem failed:', error.message);
+    return null;
+  }
+  return data?.id || null;
+}
+
 async function getQuoteStats() {
   if (!supabase) return {};
 
@@ -388,5 +424,5 @@ module.exports = {
   supabase, upsertCustomer, createOrder, getOrder, updateOrderStatus, listOrders,
   generateSku, bulkCreateInventory, listInventory, getInventoryStats,
   updateInventoryItem, batchUpdateInventoryStatus,
-  logQuote, listQuoteLogs, getQuoteStats,
+  logQuote, logQuoteItem, listQuoteLogs, getQuoteStats,
 };

@@ -11,6 +11,8 @@ import AdminPage from './pages/AdminPage';
 import AdminOrdersPage from './pages/AdminOrdersPage';
 import AdminInventoryPage from './pages/AdminInventoryPage';
 import AdminQuotesPage from './pages/AdminQuotesPage';
+import AdminDebugQuotePage from './pages/AdminDebugQuotePage';
+import AdminGatedItemsPage from './pages/AdminGatedItemsPage';
 import BulkPage from './pages/BulkPage';
 import TrackPage from './pages/TrackPage';
 import PrivacyPage from './pages/PrivacyPage';
@@ -32,6 +34,8 @@ export default function App() {
             <Route path="/admin/orders" element={<AdminOrdersPage />} />
             <Route path="/admin/inventory" element={<AdminInventoryPage />} />
             <Route path="/admin/quotes" element={<AdminQuotesPage />} />
+            <Route path="/admin/debug-quote" element={<AdminDebugQuotePage />} />
+            <Route path="/admin/gated-items" element={<AdminGatedItemsPage />} />
             <Route path="/track" element={<TrackPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/terms" element={<TermsPage />} />
