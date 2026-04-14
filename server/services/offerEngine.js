@@ -354,11 +354,17 @@ function detectCategory(categoryTree) {
   // because Amazon nests "Movies & TV > Blu-ray > DVD" in category trees.
   if (joined.includes('blu-ray') || joined.includes('bluray')) return 'bluray';
   if (joined.includes('dvd')) return 'dvd';
+  // "Movies & TV" without "Prime Video"/"Instant Video" = physical DVD/Blu-ray.
+  // Many DVDs on Amazon are just categorized as "Movies & TV > Movies" or
+  // "Movies & TV > TV" without the word "DVD" in the tree at all.
+  if (joined.includes('movies & tv') || joined.includes('movies &amp; tv')) return 'dvd';
   // Game requires the FULL phrase "video games" — bare "games" would
   // false-match "Toys & Games", "Board Games", etc.
   if (joined.includes('video games') || joined.includes('videogames')) return 'game';
   if (joined.includes('cds & vinyl') || joined.includes('cds and vinyl')) return 'cd';
   if (joined.includes('music') && joined.includes('cds')) return 'cd';
+  // Bare "music" without "cds" — could be physical CDs categorized loosely
+  if (joined.includes('music')) return 'cd';
   // Book is last so digital-book markers have a chance to disqualify first.
   if (joined.includes('books')) return 'book';
   return null;
