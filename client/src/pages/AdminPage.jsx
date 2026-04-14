@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Search, Loader2, DollarSign, TrendingUp, Package, Scale,
   ArrowDown, CheckCircle, XCircle, AlertTriangle, Zap, Clock,
-  Activity, Database, ChevronDown, ChevronUp, Archive, ClipboardCheck,
+  Activity, Database, ChevronDown, ChevronUp, Archive, ClipboardCheck, ShieldX,
 } from 'lucide-react';
 import { useAdminReview } from '../hooks/useAdminReview';
 
@@ -117,6 +117,10 @@ export default function AdminPage() {
         <span className="text-text-muted">/</span>
         <a href="/admin/debug-quote" className="text-brand-700 hover:text-brand-800 flex items-center gap-1 font-semibold">
           <Search size={14} /> Quote Debugger
+        </a>
+        <span className="text-text-muted">/</span>
+        <a href="/admin/gated-items" className="text-text-muted hover:text-brand-700 flex items-center gap-1">
+          <ShieldX size={14} /> Gated Items
         </a>
       </div>
 
