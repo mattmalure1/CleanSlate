@@ -10,6 +10,8 @@ const orderRoutes = require('./routes/order');
 const adminRoutes = require('./routes/admin');
 const inventoryRoutes = require('./routes/inventory');
 const quoteLogRoutes = require('./routes/quoteLog');
+const authRoutes = require('./routes/auth');
+const accountRoutes = require('./routes/account');
 const tierThresholds = require('./services/tierThresholds');
 
 const app = express();
@@ -38,6 +40,8 @@ app.use(orderRoutes);
 app.use(adminRoutes);
 app.use(inventoryRoutes);
 app.use(quoteLogRoutes);
+app.use(authRoutes);
+app.use(accountRoutes);
 
 // Start server — fail-fast on missing engine config.
 // The engine reads tier_thresholds + offer_engine_config at runtime; an empty

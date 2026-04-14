@@ -265,6 +265,18 @@ router.post('/api/label/:orderId', async (req, res) => {
       label_url: label.labelUrl,
     });
 
+    // Send confirmation email to customer (fire-and-forget)
+    const { sendOrderConfirmation } = require('../services/email');
+    sendOrderConfirmation({
+      customerEmail: order.customers?.email,
+      customerName: order.customers?.name,
+      orderId,
+      items: order.order_items || [],
+      totalCents: order.total_offer_cents,
+      labelUrl: label.labelUrl,
+      trackingNumber: label.trackingNumber,
+    }).catch(err => console.error('[email] Order confirmation failed:', err.message));
+
     res.json({
       orderId,
       trackingNumber: label.trackingNumber,

@@ -1,22 +1,31 @@
+import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShoppingCart, BookOpen, HelpCircle, Layers } from 'lucide-react';
+import { ShoppingCart, BookOpen, Layers, User, LogOut, ChevronDown } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
   const { itemCount } = useCart();
+  const { user, customer, signOut, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
-  function handleHowItWorks(e) {
-    e.preventDefault();
-    const section = document.getElementById('how-it-works');
-    if (section) {
-      section.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      navigate('/');
-      setTimeout(() => {
-        document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' });
-      }, 100);
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
     }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  async function handleSignOut() {
+    setMenuOpen(false);
+    await signOut();
+    navigate('/');
   }
 
   return (
@@ -69,6 +78,54 @@ export default function Navbar() {
             <div className="relative flex items-center justify-center min-w-[44px] min-h-[44px] text-text-muted">
               <ShoppingCart size={22} />
             </div>
+          )}
+
+          {/* Auth: Login button or User menu */}
+          {!authLoading && (
+            user ? (
+              <div className="relative" ref={menuRef}>
+                <button
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  className="flex items-center gap-1.5 text-sm font-medium text-text-secondary hover:text-brand-700 min-h-[44px] px-3 rounded-lg hover:bg-brand-50"
+                >
+                  <div className="w-7 h-7 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-bold">
+                    {(customer?.name || user.email)?.[0]?.toUpperCase() || 'U'}
+                  </div>
+                  <span className="hidden sm:inline max-w-[100px] truncate">
+                    {customer?.name?.split(' ')[0] || 'Account'}
+                  </span>
+                  <ChevronDown size={14} className={`transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {menuOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-[var(--radius-lg)] border border-border shadow-lg py-1 z-50">
+                    <Link
+                      to="/account"
+                      onClick={() => setMenuOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-text-primary hover:bg-brand-50 min-h-[40px]"
+                    >
+                      <User size={16} className="text-text-muted" />
+                      My Account
+                    </Link>
+                    <button
+                      onClick={handleSignOut}
+                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-reject hover:bg-reject-light min-h-[40px]"
+                    >
+                      <LogOut size={16} />
+                      Sign Out
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                className="flex items-center gap-1.5 text-sm font-semibold text-brand-600 hover:text-brand-700 min-h-[44px] px-3 rounded-lg hover:bg-brand-50"
+              >
+                <User size={18} />
+                <span className="hidden sm:inline">Sign In</span>
+              </Link>
+            )
           )}
         </div>
       </div>

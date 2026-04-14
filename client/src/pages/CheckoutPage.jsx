@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, CreditCard, Mail, MapPin, CheckSquare, X } from 'lucide-react';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import { apiUrl } from '../api';
 
 export default function CheckoutPage() {
@@ -9,6 +10,7 @@ export default function CheckoutPage() {
     items, totalDisplay, totalCents, clearCart, removeItem,
     featuredCents, featuredDisplay, pennyCount, pennyDisplay, pennyCapped, pennyCappedCents,
   } = useCart();
+  const { customer } = useAuth();
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -24,6 +26,25 @@ export default function CheckoutPage() {
     payoutMethod: 'paypal',
     payoutEmail: '',
   });
+
+  // Auto-fill from customer profile when logged in
+  useEffect(() => {
+    if (customer) {
+      const addr = customer.address || {};
+      setForm((prev) => ({
+        ...prev,
+        name: prev.name || customer.name || '',
+        email: prev.email || customer.email || '',
+        phone: prev.phone || addr.phone || '',
+        street: prev.street || addr.street || '',
+        city: prev.city || addr.city || '',
+        state: prev.state || addr.state || '',
+        zip: prev.zip || addr.zip || '',
+        payoutMethod: customer.payout_method || prev.payoutMethod,
+        payoutEmail: prev.payoutEmail || customer.payout_details || '',
+      }));
+    }
+  }, [customer]);
 
   function updateField(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
