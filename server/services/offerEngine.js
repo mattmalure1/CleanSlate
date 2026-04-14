@@ -559,11 +559,10 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
     return rejectWith(trace, 3, 'Category not accepted', `matched:${blacklistHit}`);
   }
 
-  checks.push('gated_brand');
-  const gated = opts.gatedResult || (rawProduct ? isGated(rawProduct) : { gated: false });
-  if (gated.gated) {
-    return rejectWith(trace, 3, 'Category not accepted', `gated:${gated.reason}`);
-  }
+  // Gated brand check disabled for now — Disney owns too much of the DVD
+  // catalog (Fox, Searchlight, FX) and false-positives on items like King
+  // of the Hill. Will re-enable with more specific rules later.
+  // checks.push('gated_brand');
 
   checks.push('do_not_buy');
   if (opts.doNotBuyMatch) {
