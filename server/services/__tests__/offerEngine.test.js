@@ -713,6 +713,24 @@ describe('Category detection', () => {
   test('still returns null when no signals match anything', () => {
     assert.equal(engine.detectCategory({ category_tree: ['Toys'], binding: 'Plush', product_group: 'Toy' }), null);
   });
+
+  // Vinyl records explicitly NOT bought (Matt's business decision)
+  test('rejects vinyl LP even when in CDs & Vinyl category', () => {
+    assert.equal(engine.detectCategory({ category_tree: ['CDs & Vinyl', 'Rock'], binding: 'Vinyl', product_group: '' }), null);
+  });
+
+  test('rejects vinyl LP via Vinyl LP binding', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: 'Vinyl LP', product_group: '' }), null);
+  });
+
+  test('rejects vinyl LP via Audio LP binding', () => {
+    assert.equal(engine.detectCategory({ category_tree: ['CDs & Vinyl'], binding: 'Audio LP', product_group: '' }), null);
+  });
+
+  test('still accepts Audio CD in CDs & Vinyl category', () => {
+    // Confirm the vinyl reject doesn't accidentally block real CDs
+    assert.equal(engine.detectCategory({ category_tree: ['CDs & Vinyl', 'Rock'], binding: 'Audio CD', product_group: '' }), 'cd');
+  });
 });
 
 // ============================================================

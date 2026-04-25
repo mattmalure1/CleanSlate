@@ -368,6 +368,13 @@ function detectCategory(categoryTreeOrFields) {
   if (joined.includes('instant video')) return null;
   if (joined.includes('amazon video')) return null;
 
+  // Gate 1b: reject vinyl records — Matt's business doesn't buy them.
+  // Vinyl LPs share Amazon's "CDs & Vinyl" category with CDs but have a
+  // different binding ("Vinyl" / "Vinyl LP" / "Audio LP"). Reject early
+  // so the CDs & Vinyl category match below doesn't accidentally accept them.
+  if (binding === 'vinyl' || binding.includes('vinyl lp') || binding.includes('audio lp')) return null;
+  if (productGroup === 'vinyl' || productGroup.includes('vinyl lp')) return null;
+
   // Gate 2: physical-media detection. Order matters: bluray before dvd
   // because Amazon nests "Movies & TV > Blu-ray > DVD" in category trees.
   if (joined.includes('blu-ray') || joined.includes('bluray')) return 'bluray';
@@ -393,7 +400,7 @@ function detectCategory(categoryTreeOrFields) {
   if (binding.includes('blu-ray') || binding.includes('bluray')) return 'bluray';
   if (binding.includes('dvd') || binding.includes('vhs')) return 'dvd';
   if (binding === 'video game' || binding.includes('video game') || productGroup.includes('video game')) return 'game';
-  if (binding.includes('audio cd') || binding === 'cd' || binding.includes('vinyl')) return 'cd';
+  if (binding.includes('audio cd') || binding === 'cd') return 'cd';
   if (productGroup === 'music') return 'cd';
   if (
     binding.includes('hardcover') ||
