@@ -813,91 +813,98 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   };
 
   // ===== STEP 8: Net resale value =====
+  // V3: We don't short-circuit here on negative netResale — the v3 formula
+  // in Step 10 will naturally cap at 0 via the amazonMax check, and Step 11
+  // will route to the bundle tier if appropriate. This keeps all the offer
+  // logic in one place instead of duplicating the bundle path.
   const netResale = workingPrice - totalFees;
   trace.net_resale_cents = netResale;
-
-  if (netResale <= 0) {
-    // Amazon math is underwater — but the item might still work in an eBay
-    // genre bundle where there are NO per-item Amazon fees. A lot of 25
-    // horror DVDs sells for $15-30 on eBay. The per-item economics are:
-    //   revenue: ~$0.60-$1.20 per item (lot price / item count)
-    //   eBay fee: ~13% = ~$0.08-$0.16
-    //   shipping: amortized across box (~$0.09/item in a 60-item box)
-    //   net per item: ~$0.40-$0.90
-    // So $0.05 acquisition cost is viable if per-item net >= $0.25.
-    //
-    // We use the working price as a proxy for the item's eBay value in a
-    // bundle. Items with higher Amazon prices will have higher eBay bundle
-    // value too. The threshold: working_price >= $2.00 means the item has
-    // SOME resale value and belongs in a genre lot, not the trash.
-    const EBAY_BUNDLE_MIN_PRICE_CENTS = 200; // $2.00 minimum to be worth bundling
-    const EBAY_BUNDLE_OFFER_CENTS = 5;        // $0.05
-
-    if (workingPrice >= EBAY_BUNDLE_MIN_PRICE_CENTS) {
-      const subCat = classifySubCategory(category, extractedFields.title);
-      if (!subCat.reject) {
-        trace.final_offer_cents = EBAY_BUNDLE_OFFER_CENTS;
-        trace.penny_tier_applied = true;
-        trace.penny_offer_cents = EBAY_BUNDLE_OFFER_CENTS;
-        trace.penny_net_profit_cents = null; // not calculable per-item for eBay bundles
-        trace.sub_category = subCat.subCategory;
-        trace.genre = subCat.genre || null;
-        trace.disposition = 'ebay_bundle';
-        trace.bundle_label = subCat.bundleLabel || formatBundleLabel(category, subCat.genre || 'mixed');
-        trace.ebay_fallback = true;
-        return acceptWith(trace, EBAY_BUNDLE_OFFER_CENTS, assignedTier?.tier || 'T4', true);
-      }
-    }
-
-    return rejectWith(trace, 8, 'No margin after fees');
-  }
 
   // ===== STEP 9: Inventory throttling (MVP: always 1.00) =====
   // Phase 2 wires actual inventory_on_hand throttling.
   trace.inventory_penalty_applied = 1.0;
 
-  // ===== STEP 10: ROI floor + final offer =====
-  const roiFloor = assignedTier.roi_floor_percent / 100;
-  trace.roi_floor_applied = assignedTier.roi_floor_percent;
+  // ===== STEP 10: V3 buyback offer formula (percentage of sell price) =====
+  //
+  // The offer is the LOWEST of three numbers:
+  //   1. percentOffer = workingPrice × tier_pct (e.g., 18% for hot books)
+  //   2. amazonMax  = netResale - min_margin (never lose money on Amazon)
+  //   3. hardCap   = workingPrice × max_offer_pct (never offer more than 25%)
+  //
+  // If the result is below 5¢ but the item still has velocity AND a viable
+  // sub-category, fall through to bundle tier (Step 11). Otherwise reject.
+  //
+  // Tiers configured with offer_mode='bundle' skip this entirely and go
+  // straight to bundle pricing — used for slow-mover bands where Amazon
+  // math will never work but the item belongs in an eBay genre lot.
+  let finalOffer;
+  let percentOffer = 0;
+  let amazonMax = 0;
+  let hardCap = 0;
 
-  const maxOfferCents = Math.floor(netResale / (1 + roiFloor));
-  const requiredMargin = Math.max(
-    assignedTier.min_flat_margin_cents,
-    netResale - maxOfferCents
-  );
-  trace.required_margin_cents = requiredMargin;
+  if (assignedTier.offer_mode === 'bundle') {
+    // Tier configured as bundle-only — straight to bundle pricing
+    finalOffer = 0; // forces fallthrough to Step 11 bundle path
+    trace.tier_offer_mode = 'bundle';
+  } else {
+    const targetPctBp = assignedTier.target_pct_bp ?? 1000; // 10% default
+    const targetPct = targetPctBp / 10000;
+    percentOffer = Math.floor(workingPrice * targetPct);
 
-  const offerBeforePenalties = netResale - requiredMargin;
-  const withPenalties = offerBeforePenalties * competitionPenalty * trace.inventory_penalty_applied;
-  const finalOffer = Math.floor(withPenalties / 5) * 5; // round down to nearest $0.05
+    let minMargin = 30; // 30¢ default
+    try { minMargin = tt.getConfig('min_margin_cents'); } catch (_) { /* keep default */ }
+    amazonMax = netResale - minMargin;
+
+    let maxOfferPctBp = 2500; // 25% default
+    try { maxOfferPctBp = tt.getConfig('max_offer_pct_bp'); } catch (_) { /* keep default */ }
+    hardCap = Math.floor(workingPrice * (maxOfferPctBp / 10000));
+
+    const offerBeforePenalties = Math.min(percentOffer, amazonMax, hardCap);
+    const withPenalties = offerBeforePenalties * competitionPenalty * trace.inventory_penalty_applied;
+    finalOffer = Math.floor(withPenalties / 5) * 5; // round down to nearest 5¢
+    if (finalOffer < 0) finalOffer = 0;
+
+    trace.target_pct_bp = targetPctBp;
+    trace.percent_offer_cents = percentOffer;
+    trace.amazon_max_cents = amazonMax;
+    trace.hard_cap_cents = hardCap;
+    trace.tier_offer_mode = 'percent';
+  }
   trace.final_offer_cents = finalOffer;
 
-  // ===== STEP 11: Sanity checks + sub-category penny tier =====
-  if (finalOffer < 25) {
-    // V2: classify sub-category to determine penny offer ($0.10 keeper vs
-    // $0.05 bulk) and check for reject sub-categories (romance, sports games, etc.)
+  // ===== STEP 11: Bundle/penny fallback + sanity checks =====
+  //
+  // V3: If the percentage offer rounded down to less than $0.05 (or this is
+  // a bundle-mode tier), the item is too low-margin for individual FBA but
+  // may still be profitable in an eBay genre bundle. Fall through to penny
+  // tier ($0.05 default for books/DVDs/CDs/blu-rays, $0.10 for games).
+  //
+  // Reject if the sub-category classifier flags this as truly unsellable
+  // (romance pulp, Kidz Bop, sports games, etc.).
+  if (finalOffer < 5) {
     const subCat = classifySubCategory(category, extractedFields.title);
     trace.sub_category = subCat.subCategory;
     trace.genre = subCat.genre || null;
     trace.disposition = subCat.disposition || null;
-    trace.bundle_label = subCat.bundleLabel || null;
+    trace.bundle_label = subCat.bundleLabel || formatBundleLabel(category, subCat.genre || 'mixed');
 
     if (subCat.reject) {
       return rejectWith(trace, 11, subCat.rejectReason,
         `sub_category=${subCat.subCategory}`);
     }
 
-    const pennyProfit = netResale - subCat.pennyOffer;
-    if (pennyProfit >= subCat.minNetProfit) {
-      trace.final_offer_cents = subCat.pennyOffer;
-      trace.penny_tier_applied = true;
-      trace.penny_offer_cents = subCat.pennyOffer;
-      trace.penny_net_profit_cents = pennyProfit;
-      return acceptWith(trace, subCat.pennyOffer, assignedTier.tier, true);
-    }
-    return rejectWith(trace, 11, 'Margin too thin',
-      `final_offer=${finalOffer}, penny=${subCat.pennyOffer}, penny_profit=${pennyProfit}`);
+    // Use the tier-configured bundle offer (5¢ default, 10¢ for games)
+    const bundleOffer = assignedTier.bundle_offer_cents ?? 5;
+    trace.final_offer_cents = bundleOffer;
+    trace.penny_tier_applied = true;
+    trace.penny_offer_cents = bundleOffer;
+    trace.disposition = trace.disposition || 'ebay_bundle';
+    return acceptWith(trace, bundleOffer, assignedTier.tier, true);
   }
+
+  // Sanity ceiling — engine bug detection. If the offer is somehow > 50%
+  // of working price, something is wrong (the 25% hard cap should have
+  // prevented this).
   if (finalOffer > workingPrice * 0.50) {
     console.error('[offerEngine] Calculation error — offer exceeds 50% of working price', {
       asin: extractedFields.asin, workingPrice, finalOffer,
@@ -908,6 +915,7 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
 
   trace.penny_tier_applied = false;
   trace.sub_category = null;
+  trace.disposition = 'amazon_fba';
   return acceptWith(trace, finalOffer, assignedTier.tier, false);
 }
 

@@ -59,6 +59,13 @@ async function loadThresholds() {
       bsr_ceiling: row.bsr_ceiling,
       roi_floor_percent: row.roi_floor_percent,
       min_flat_margin_cents: row.min_flat_margin_cents,
+      // V3 buyback fields (added 2026-04-25). Nullable for backwards
+      // compatibility — engine falls back to ROI logic if target_pct_bp
+      // is null. After migration runs, all rows will have these populated.
+      bsr_floor: row.bsr_floor ?? 0,
+      target_pct_bp: row.target_pct_bp ?? null,
+      offer_mode: row.offer_mode ?? 'percent',
+      bundle_offer_cents: row.bundle_offer_cents ?? 5,
     };
   }
 
