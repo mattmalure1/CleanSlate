@@ -20,24 +20,24 @@ const engine = require('../offerEngine');
 // few tests that exercise them, but the engine uses target_pct_bp now.
 const SEED_TIERS = [
   // book
-  { category: 'book',   tier: 'T1', min_rank_drops_90: 30, bsr_floor:       0, bsr_ceiling:   500000, target_pct_bp: 1800, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 40,  min_flat_margin_cents: 250 },
-  { category: 'book',   tier: 'T2', min_rank_drops_90: 15, bsr_floor:  500001, bsr_ceiling:  1500000, target_pct_bp: 1200, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 60,  min_flat_margin_cents: 350 },
-  { category: 'book',   tier: 'T3', min_rank_drops_90:  8, bsr_floor: 1500001, bsr_ceiling:  2500000, target_pct_bp:  700, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 85,  min_flat_margin_cents: 500 },
-  { category: 'book',   tier: 'T4', min_rank_drops_90:  4, bsr_floor: 2500001, bsr_ceiling:  3000000, target_pct_bp:  400, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 125, min_flat_margin_cents: 800 },
+  { category: 'book',   tier: 'T1', min_rank_drops_90: 30, bsr_floor:       0, bsr_ceiling:   500000, target_pct_bp: 1800, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 40,  min_flat_margin_cents: 250 },
+  { category: 'book',   tier: 'T2', min_rank_drops_90: 15, bsr_floor:  500001, bsr_ceiling:  1500000, target_pct_bp: 1200, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 60,  min_flat_margin_cents: 350 },
+  { category: 'book',   tier: 'T3', min_rank_drops_90:  8, bsr_floor: 1500001, bsr_ceiling:  2500000, target_pct_bp:  700, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 85,  min_flat_margin_cents: 500 },
+  { category: 'book',   tier: 'T4', min_rank_drops_90:  4, bsr_floor: 2500001, bsr_ceiling:  3000000, target_pct_bp:  400, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 125, min_flat_margin_cents: 800 },
   // dvd
-  { category: 'dvd',    tier: 'T1', min_rank_drops_90: 30, bsr_floor:       0, bsr_ceiling:    50000, target_pct_bp: 1500, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 40,  min_flat_margin_cents: 250 },
-  { category: 'dvd',    tier: 'T2', min_rank_drops_90: 15, bsr_floor:   50001, bsr_ceiling:    80000, target_pct_bp: 1000, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 60,  min_flat_margin_cents: 350 },
-  { category: 'dvd',    tier: 'T3', min_rank_drops_90:  8, bsr_floor:   80001, bsr_ceiling:   120000, target_pct_bp:  600, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 85,  min_flat_margin_cents: 500 },
-  { category: 'dvd',    tier: 'T4', min_rank_drops_90:  4, bsr_floor:  120001, bsr_ceiling:   150000, target_pct_bp:  300, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 125, min_flat_margin_cents: 800 },
+  { category: 'dvd',    tier: 'T1', min_rank_drops_90: 30, bsr_floor:       0, bsr_ceiling:    50000, target_pct_bp: 1500, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 40,  min_flat_margin_cents: 250 },
+  { category: 'dvd',    tier: 'T2', min_rank_drops_90: 15, bsr_floor:   50001, bsr_ceiling:    80000, target_pct_bp: 1000, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 60,  min_flat_margin_cents: 350 },
+  { category: 'dvd',    tier: 'T3', min_rank_drops_90:  8, bsr_floor:   80001, bsr_ceiling:   120000, target_pct_bp:  600, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 85,  min_flat_margin_cents: 500 },
+  { category: 'dvd',    tier: 'T4', min_rank_drops_90:  4, bsr_floor:  120001, bsr_ceiling:   150000, target_pct_bp:  300, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 125, min_flat_margin_cents: 800 },
   // bluray
-  { category: 'bluray', tier: 'T1', min_rank_drops_90: 30, bsr_floor:       0, bsr_ceiling:    50000, target_pct_bp: 1700, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 40,  min_flat_margin_cents: 250 },
-  { category: 'bluray', tier: 'T2', min_rank_drops_90: 15, bsr_floor:   50001, bsr_ceiling:    80000, target_pct_bp: 1100, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 60,  min_flat_margin_cents: 350 },
-  { category: 'bluray', tier: 'T3', min_rank_drops_90:  8, bsr_floor:   80001, bsr_ceiling:   120000, target_pct_bp:  700, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 85,  min_flat_margin_cents: 500 },
-  { category: 'bluray', tier: 'T4', min_rank_drops_90:  4, bsr_floor:  120001, bsr_ceiling:   150000, target_pct_bp:  400, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 125, min_flat_margin_cents: 800 },
+  { category: 'bluray', tier: 'T1', min_rank_drops_90: 30, bsr_floor:       0, bsr_ceiling:    50000, target_pct_bp: 1700, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 40,  min_flat_margin_cents: 250 },
+  { category: 'bluray', tier: 'T2', min_rank_drops_90: 15, bsr_floor:   50001, bsr_ceiling:    80000, target_pct_bp: 1100, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 60,  min_flat_margin_cents: 350 },
+  { category: 'bluray', tier: 'T3', min_rank_drops_90:  8, bsr_floor:   80001, bsr_ceiling:   120000, target_pct_bp:  700, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 85,  min_flat_margin_cents: 500 },
+  { category: 'bluray', tier: 'T4', min_rank_drops_90:  4, bsr_floor:  120001, bsr_ceiling:   150000, target_pct_bp:  400, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 125, min_flat_margin_cents: 800 },
   // cd
-  { category: 'cd',     tier: 'T1', min_rank_drops_90: 30, bsr_floor:       0, bsr_ceiling:   100000, target_pct_bp: 1200, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 40,  min_flat_margin_cents: 250 },
-  { category: 'cd',     tier: 'T2', min_rank_drops_90: 15, bsr_floor:  100001, bsr_ceiling:   150000, target_pct_bp:  800, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 60,  min_flat_margin_cents: 350 },
-  { category: 'cd',     tier: 'T3', min_rank_drops_90:  8, bsr_floor:  150001, bsr_ceiling:   200000, target_pct_bp:  500, offer_mode: 'percent', bundle_offer_cents: 5, roi_floor_percent: 85,  min_flat_margin_cents: 500 },
+  { category: 'cd',     tier: 'T1', min_rank_drops_90: 30, bsr_floor:       0, bsr_ceiling:   100000, target_pct_bp: 1200, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 40,  min_flat_margin_cents: 250 },
+  { category: 'cd',     tier: 'T2', min_rank_drops_90: 15, bsr_floor:  100001, bsr_ceiling:   150000, target_pct_bp:  800, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 60,  min_flat_margin_cents: 350 },
+  { category: 'cd',     tier: 'T3', min_rank_drops_90:  8, bsr_floor:  150001, bsr_ceiling:   200000, target_pct_bp:  500, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 85,  min_flat_margin_cents: 500 },
   // game
   { category: 'game',   tier: 'T1', min_rank_drops_90: 30, bsr_floor:       0, bsr_ceiling:    50000, target_pct_bp: 2000, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 40,  min_flat_margin_cents: 250 },
   { category: 'game',   tier: 'T2', min_rank_drops_90: 15, bsr_floor:   50001, bsr_ceiling:    80000, target_pct_bp: 1200, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 60,  min_flat_margin_cents: 350 },
@@ -239,7 +239,7 @@ describe('Step 4: Velocity + tier assignment', () => {
     const r = run(makeExtracted({ sales_rank_drops_90: 3 }));
     assert.equal(r.accepted, true);
     assert.equal(r.is_penny_tier, true);
-    assert.equal(r.offer_cents, 5);
+    assert.equal(r.offer_cents, 5);  // legacy low-velocity path still uses 5¢
     assert.equal(r.calculation_trace.ebay_fallback, true);
     assert.equal(r.calculation_trace.ebay_fallback_reason, 'low_velocity');
   });
@@ -620,10 +620,10 @@ describe('V3: percentage-of-sell-price formula', () => {
       current_bsr: 100000,
     }));
     // $5 book: percent offer = $0.90 but Amazon fees > $5 → amazonMax negative
-    // → final caps at $0 → falls to bundle tier ($0.05)
+    // → final caps at $0 → falls to bundle tier ($0.10 for v3)
     assert.equal(r.accepted, true);
     assert.equal(r.is_penny_tier, true);
-    assert.equal(r.offer_cents, 5);
+    assert.equal(r.offer_cents, 10);
   });
 
   test('25% hard cap protects against runaway offers', () => {
@@ -1112,10 +1112,10 @@ describe('V2: Penny tier', () => {
       current_bsr: 250000,
     }));
     // $5 book: Amazon fees eat the margin → percent offer floors to $0
-    // → Step 11 routes to bundle tier ($0.05).
+    // → Step 11 routes to bundle tier ($0.10).
     assert.equal(r.accepted, true);
     assert.equal(r.is_penny_tier, true);
-    assert.equal(r.offer_cents, 5);
+    assert.equal(r.offer_cents, 10);
     assert.equal(r.calculation_trace.disposition, 'ebay_bundle');
   });
 

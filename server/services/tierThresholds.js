@@ -65,7 +65,7 @@ async function loadThresholds() {
       bsr_floor: row.bsr_floor ?? 0,
       target_pct_bp: row.target_pct_bp ?? null,
       offer_mode: row.offer_mode ?? 'percent',
-      bundle_offer_cents: row.bundle_offer_cents ?? 5,
+      bundle_offer_cents: row.bundle_offer_cents ?? 10,
     };
   }
 

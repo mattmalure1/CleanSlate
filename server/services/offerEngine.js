@@ -671,13 +671,14 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
     // Gate: must have a used buybox price >= $3.00 (proves the item has real
     // resale value, not just junk) and can't be a reject sub-category.
     const EBAY_LOW_VELOCITY_MIN_PRICE = 300; // $3.00
+    const LOW_VELOCITY_BUNDLE_OFFER = 5;     // legacy 5¢ for very-low-velocity items
     const currentPrice = extractedFields.current_used_buybox_cents ?? extractedFields.current_new_3p_cents;
     if (currentPrice && currentPrice >= EBAY_LOW_VELOCITY_MIN_PRICE) {
       const subCat = classifySubCategory(category, extractedFields.title);
       if (!subCat.reject) {
-        trace.final_offer_cents = 5;
+        trace.final_offer_cents = LOW_VELOCITY_BUNDLE_OFFER;
         trace.penny_tier_applied = true;
-        trace.penny_offer_cents = 5;
+        trace.penny_offer_cents = LOW_VELOCITY_BUNDLE_OFFER;
         trace.penny_net_profit_cents = null;
         trace.sub_category = subCat.subCategory;
         trace.genre = subCat.genre || null;
@@ -685,7 +686,7 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
         trace.bundle_label = subCat.bundleLabel || formatBundleLabel(category, subCat.genre || 'mixed');
         trace.ebay_fallback = true;
         trace.ebay_fallback_reason = 'low_velocity';
-        return acceptWith(trace, 5, 'T4', true);
+        return acceptWith(trace, LOW_VELOCITY_BUNDLE_OFFER, 'T4', true);
       }
     }
     return rejectWith(trace, 4, 'Low velocity — sold fewer than 4 times in 90 days',
@@ -894,7 +895,7 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
     }
 
     // Use the tier-configured bundle offer (5¢ default, 10¢ for games)
-    const bundleOffer = assignedTier.bundle_offer_cents ?? 5;
+    const bundleOffer = assignedTier.bundle_offer_cents ?? 10;
     trace.final_offer_cents = bundleOffer;
     trace.penny_tier_applied = true;
     trace.penny_offer_cents = bundleOffer;

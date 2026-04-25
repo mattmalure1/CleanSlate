@@ -158,6 +158,61 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ─── HOW OFFERS WORK (set price expectations) ─── */}
+      <section className="bg-brand-50/40 border-y border-brand-100">
+        <div className="max-w-4xl mx-auto px-[var(--spacing-page)] py-14">
+          <div className="text-center mb-10">
+            <p className="text-brand-600 font-semibold text-sm tracking-wide uppercase">Pricing</p>
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-text-primary mt-2">
+              How Our Offers Work
+            </h2>
+            <p className="mt-3 text-base text-text-secondary max-w-xl mx-auto leading-relaxed">
+              Like Decluttr or SellBackYourBook, our model is volume-based. Most items are worth a few cents each — but a typical box adds up fast, and shipping is always free.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Bulk tier */}
+            <div className="bg-white rounded-2xl p-5 border border-border/60 shadow-sm text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-amber-100 mb-3">
+                <span className="text-amber-600 font-display font-bold text-base">10¢</span>
+              </div>
+              <h3 className="font-display font-bold text-base text-text-primary">Bulk Items</h3>
+              <p className="mt-1.5 text-xs text-text-muted font-semibold uppercase tracking-wide">Most items</p>
+              <p className="mt-3 text-sm text-text-secondary leading-relaxed">
+                Common paperbacks, older DVDs &amp; CDs, slow-moving titles. Pays per item — your 50-item box can still net $5–10 plus a free label.
+              </p>
+            </div>
+            {/* Standard tier */}
+            <div className="bg-white rounded-2xl p-5 border border-border/60 shadow-sm text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-brand-100 mb-3">
+                <span className="text-brand-700 font-display font-bold text-sm">25¢-$2</span>
+              </div>
+              <h3 className="font-display font-bold text-base text-text-primary">Decent Items</h3>
+              <p className="mt-1.5 text-xs text-text-muted font-semibold uppercase tracking-wide">Some items</p>
+              <p className="mt-3 text-sm text-text-secondary leading-relaxed">
+                Recent fiction, popular DVDs, in-demand games. Items with steady resale value but not super hot.
+              </p>
+            </div>
+            {/* Hot tier */}
+            <div className="bg-white rounded-2xl p-5 border border-border/60 shadow-sm text-center">
+              <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-accept-light mb-3">
+                <span className="text-accept font-display font-bold text-sm">$2-$30+</span>
+              </div>
+              <h3 className="font-display font-bold text-base text-text-primary">Hot Items</h3>
+              <p className="mt-1.5 text-xs text-text-muted font-semibold uppercase tracking-wide">A few items</p>
+              <p className="mt-3 text-sm text-text-secondary leading-relaxed">
+                Textbooks, modern video games, rare Blu-rays, recent bestsellers. Premium pricing — these pay for the box.
+              </p>
+            </div>
+          </div>
+
+          <p className="mt-8 text-center text-sm text-text-secondary">
+            <span className="font-semibold text-text-primary">Average box pays $5–$25</span> for 50–100 items, with free USPS Media Mail label included.
+          </p>
+        </div>
+      </section>
+
       {/* ─── CUSTOMER TESTIMONIALS ─── */}
       <section className="bg-background">
         <div className="max-w-4xl mx-auto px-[var(--spacing-page)] py-14">

@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, Camera, ShoppingCart, Trash2, Check, Loader2, Flashlight, FlashlightOff } from 'lucide-react';
+import { X, Camera, ShoppingCart, Trash2, Check, Loader2, Flashlight, FlashlightOff, Info, Layers } from 'lucide-react';
 import { apiUrl } from '../api';
 import { useCart } from '../context/CartContext';
+
+// localStorage key for the one-time bulk explainer modal
+const BULK_EXPLAINER_KEY = 'cleanslate_bulk_explainer_seen';
 
 // Session-level cache — survives component mount/unmount within same page load.
 const sessionCache = new Map();
@@ -28,7 +31,9 @@ export default function BarcodeScanner({ onScan, onClose }) {
   const [flash, setFlash] = useState(null);
   const [torchOn, setTorchOn] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
+  const [showBulkExplainer, setShowBulkExplainer] = useState(false);
   const flashTimer = useRef(null);
+  const bulkExplainerShown = useRef(false);
 
   onScanRef.current = onScan;
   onCloseRef.current = onClose;
@@ -71,6 +76,16 @@ export default function BarcodeScanner({ onScan, onClose }) {
       if (isPenny) {
         showFlash('penny', `${item.offerDisplay} bulk add — ${item.title || 'Added!'}`);
         playTone(550, 0.10);
+        // Show one-time bulk explainer the first time a penny item appears.
+        // Persisted in localStorage so it doesn't nag returning customers.
+        if (!bulkExplainerShown.current) {
+          bulkExplainerShown.current = true;
+          try {
+            if (!localStorage.getItem(BULK_EXPLAINER_KEY)) {
+              setShowBulkExplainer(true);
+            }
+          } catch { /* localStorage unavailable — skip */ }
+        }
       } else {
         showFlash('accept', `${item.offerDisplay} — ${item.title || 'Added!'}`);
         playTone(880, 0.08);
@@ -286,6 +301,11 @@ export default function BarcodeScanner({ onScan, onClose }) {
     setItems(prev => prev.filter(i => i.id !== id));
   }
 
+  function dismissBulkExplainer() {
+    setShowBulkExplainer(false);
+    try { localStorage.setItem(BULK_EXPLAINER_KEY, '1'); } catch { /* ignore */ }
+  }
+
   const isOffer = (i) => i.status === 'accepted' || i.status === 'low' || i.status === 'penny';
   const acceptedCount = items.filter(isOffer).length;
   const totalCents = items.filter(isOffer).reduce((s, i) => s + (i.offerCents || 0), 0);
@@ -429,6 +449,51 @@ export default function BarcodeScanner({ onScan, onClose }) {
         <div className="bg-black/90 text-center py-4 px-6">
           <p className="text-red-400 text-sm">{error}</p>
           <button onClick={handleClose} className="text-white text-sm underline mt-2 min-h-[44px] cursor-pointer">Go back</button>
+        </div>
+      )}
+
+      {/* One-time bulk explainer — fires the first time a penny item is added */}
+      {showBulkExplainer && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+          onClick={dismissBulkExplainer}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-11 h-11 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <Layers size={22} className="text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-display font-bold text-lg text-text-primary">Bulk items pay 10¢ each</h3>
+                <p className="text-xs text-text-muted mt-0.5">Most media is bulk-tier — they add up fast.</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-sm text-text-secondary leading-relaxed">
+              <div className="flex gap-2.5">
+                <Info size={16} className="text-brand-600 flex-shrink-0 mt-0.5" />
+                <p>Common books, older DVDs, and CDs go to our eBay bulk lots. <span className="font-semibold text-text-primary">10¢ per item</span> — typical box of 50 items pays $5+.</p>
+              </div>
+              <div className="flex gap-2.5">
+                <Info size={16} className="text-brand-600 flex-shrink-0 mt-0.5" />
+                <p>Hot items (textbooks, recent games, popular Blu-rays) pay <span className="font-semibold text-text-primary">$1–$30+</span> when they show up.</p>
+              </div>
+              <div className="flex gap-2.5">
+                <Info size={16} className="text-brand-600 flex-shrink-0 mt-0.5" />
+                <p>Free USPS shipping label included with every order. Just keep scanning — your total adds up.</p>
+              </div>
+            </div>
+
+            <button
+              onClick={dismissBulkExplainer}
+              className="mt-5 w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold text-base py-3.5 rounded-xl min-h-[48px] cursor-pointer"
+            >
+              Got it, keep scanning
+            </button>
+          </div>
         </div>
       )}
     </div>

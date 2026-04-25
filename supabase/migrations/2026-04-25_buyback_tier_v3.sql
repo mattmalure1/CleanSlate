@@ -42,11 +42,11 @@ INSERT INTO tier_thresholds (
   target_pct_bp, offer_mode, bundle_offer_cents,
   roi_floor_percent, min_flat_margin_cents
 ) VALUES
-  ('book', 'T1',         0,    100000, 50, 9999, 1800, 'percent',  5,  0,  0),
-  ('book', 'T2',    100001,    500000, 24, 9999, 1200, 'percent',  5,  0,  0),
-  ('book', 'T3',    500001,   1500000, 12, 9999,  700, 'percent',  5,  0,  0),
-  ('book', 'T4',   1500001,   3000000,  3, 9999,  400, 'percent',  5,  0,  0),
-  ('book', 'T5',   3000001,   8000000,  1, 9999,    0, 'bundle',   5,  0,  0);
+  ('book', 'T1',         0,    100000, 50, 9999, 1800, 'percent', 10,  0,  0),
+  ('book', 'T2',    100001,    500000, 24, 9999, 1200, 'percent', 10,  0,  0),
+  ('book', 'T3',    500001,   1500000, 12, 9999,  700, 'percent', 10,  0,  0),
+  ('book', 'T4',   1500001,   3000000,  3, 9999,  400, 'percent', 10,  0,  0),
+  ('book', 'T5',   3000001,   8000000,  1, 9999,    0, 'bundle',  10,  0,  0);
 
 -- ─── DVDs ────────────────────────────────────────────────────
 INSERT INTO tier_thresholds (
@@ -55,10 +55,10 @@ INSERT INTO tier_thresholds (
   target_pct_bp, offer_mode, bundle_offer_cents,
   roi_floor_percent, min_flat_margin_cents
 ) VALUES
-  ('dvd',  'T1',        0,     50000, 15, 9999, 1500, 'percent',  5,  0,  0),
-  ('dvd',  'T2',    50001,    100000,  5, 9999, 1000, 'percent',  5,  0,  0),
-  ('dvd',  'T3',   100001,    200000,  2, 9999,  600, 'percent',  5,  0,  0),
-  ('dvd',  'T4',   200001,    500000,  1, 9999,    0, 'bundle',   5,  0,  0);
+  ('dvd',  'T1',        0,     50000, 15, 9999, 1500, 'percent', 10,  0,  0),
+  ('dvd',  'T2',    50001,    100000,  5, 9999, 1000, 'percent', 10,  0,  0),
+  ('dvd',  'T3',   100001,    200000,  2, 9999,  600, 'percent', 10,  0,  0),
+  ('dvd',  'T4',   200001,    500000,  1, 9999,    0, 'bundle',  10,  0,  0);
 
 -- ─── Blu-rays (1-2% higher than DVDs, slightly higher resale) ─
 INSERT INTO tier_thresholds (
@@ -67,10 +67,10 @@ INSERT INTO tier_thresholds (
   target_pct_bp, offer_mode, bundle_offer_cents,
   roi_floor_percent, min_flat_margin_cents
 ) VALUES
-  ('bluray', 'T1',        0,     50000, 15, 9999, 1700, 'percent',  5,  0,  0),
-  ('bluray', 'T2',    50001,    100000,  5, 9999, 1100, 'percent',  5,  0,  0),
-  ('bluray', 'T3',   100001,    200000,  2, 9999,  700, 'percent',  5,  0,  0),
-  ('bluray', 'T4',   200001,    500000,  1, 9999,    0, 'bundle',   5,  0,  0);
+  ('bluray', 'T1',        0,     50000, 15, 9999, 1700, 'percent', 10,  0,  0),
+  ('bluray', 'T2',    50001,    100000,  5, 9999, 1100, 'percent', 10,  0,  0),
+  ('bluray', 'T3',   100001,    200000,  2, 9999,  700, 'percent', 10,  0,  0),
+  ('bluray', 'T4',   200001,    500000,  1, 9999,    0, 'bundle',  10,  0,  0);
 
 -- ─── CDs (lower percentages — saturated market) ──────────────
 INSERT INTO tier_thresholds (
@@ -79,10 +79,10 @@ INSERT INTO tier_thresholds (
   target_pct_bp, offer_mode, bundle_offer_cents,
   roi_floor_percent, min_flat_margin_cents
 ) VALUES
-  ('cd',  'T1',        0,     50000, 15, 9999, 1200, 'percent',  5,  0,  0),
-  ('cd',  'T2',    50001,    200000,  5, 9999,  800, 'percent',  5,  0,  0),
-  ('cd',  'T3',   200001,    500000,  2, 9999,  500, 'percent',  5,  0,  0),
-  ('cd',  'T4',   500001,   1000000,  1, 9999,    0, 'bundle',   5,  0,  0);
+  ('cd',  'T1',        0,     50000, 15, 9999, 1200, 'percent', 10,  0,  0),
+  ('cd',  'T2',    50001,    200000,  5, 9999,  800, 'percent', 10,  0,  0),
+  ('cd',  'T3',   200001,    500000,  2, 9999,  500, 'percent', 10,  0,  0),
+  ('cd',  'T4',   500001,   1000000,  1, 9999,    0, 'bundle',  10,  0,  0);
 
 -- ─── Video Games (highest percentages — best per-item economics) ─
 INSERT INTO tier_thresholds (
