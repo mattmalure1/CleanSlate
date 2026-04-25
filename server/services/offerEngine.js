@@ -279,6 +279,11 @@ function extractKeepaFields(product) {
     title: product.title || '',
     category_tree: categoryTree,
     category_root: null, // populated by detectCategory()
+    // Fallback signals when category_tree is sparse/missing — Keepa exposes
+    // explicit format hints in `binding` (e.g., "DVD", "Audio CD", "Hardcover")
+    // and `productGroup` ("Book", "DVD", "Music", "Video Games", "Toy").
+    binding: product.binding || '',
+    product_group: product.productGroup || '',
 
     // Prices (cents) — used-buybox anchor for buyback pricing.
     // NOTE: Keepa index 18 = New Buy Box Shipping (wrong for used resale).
@@ -335,16 +340,29 @@ function extractKeepaFields(product) {
 //   4. Book detection requires "books" AND no digital markers. Substrings
 //      like "cookbooks" correctly match via the "books" substring.
 // ------------------------------------------------------------
-function detectCategory(categoryTree) {
-  if (!Array.isArray(categoryTree) || categoryTree.length === 0) return null;
-  const joined = categoryTree.join(' ').toLowerCase();
+function detectCategory(categoryTreeOrFields) {
+  // Backwards-compatible: accept either the legacy categoryTree array
+  // or the full extractedFields object (preferred — gives us binding/productGroup
+  // fallback signals when the category_tree is sparse).
+  let categoryTree = [];
+  let binding = '';
+  let productGroup = '';
+  if (Array.isArray(categoryTreeOrFields)) {
+    categoryTree = categoryTreeOrFields;
+  } else if (categoryTreeOrFields && typeof categoryTreeOrFields === 'object') {
+    categoryTree = categoryTreeOrFields.category_tree || [];
+    binding = (categoryTreeOrFields.binding || '').toLowerCase();
+    productGroup = (categoryTreeOrFields.product_group || '').toLowerCase();
+  }
+
+  const joined = (Array.isArray(categoryTree) ? categoryTree : []).join(' ').toLowerCase();
 
   // Gate 1: reject any digital-only format outright.
   // Checked BEFORE physical matches so Kindle/Audible/MP3/Prime Video
   // always return null even if the tree also mentions a physical category.
-  if (joined.includes('kindle')) return null;
-  if (joined.includes('audible')) return null;
-  if (joined.includes('mp3')) return null;
+  if (joined.includes('kindle') || binding.includes('kindle')) return null;
+  if (joined.includes('audible') || binding.includes('audible')) return null;
+  if (joined.includes('mp3') || binding.includes('mp3')) return null;
   if (joined.includes('digital music')) return null;
   if (joined.includes('prime video')) return null;
   if (joined.includes('instant video')) return null;
@@ -367,6 +385,28 @@ function detectCategory(categoryTree) {
   if (joined.includes('music')) return 'cd';
   // Book is last so digital-book markers have a chance to disqualify first.
   if (joined.includes('books')) return 'book';
+
+  // Gate 3: BINDING / PRODUCT_GROUP fallback. When the category tree is sparse
+  // (Keepa data quality varies for older/niche items), Amazon's `binding` and
+  // `productGroup` fields almost always identify the format directly.
+  // Order: bluray > dvd > game > cd > book to match Gate 2 priority.
+  if (binding.includes('blu-ray') || binding.includes('bluray')) return 'bluray';
+  if (binding.includes('dvd') || binding.includes('vhs')) return 'dvd';
+  if (binding === 'video game' || binding.includes('video game') || productGroup.includes('video game')) return 'game';
+  if (binding.includes('audio cd') || binding === 'cd' || binding.includes('vinyl')) return 'cd';
+  if (productGroup === 'music') return 'cd';
+  if (
+    binding.includes('hardcover') ||
+    binding.includes('paperback') ||
+    binding.includes('mass market') ||
+    binding.includes('board book') ||
+    binding === 'book' ||
+    binding.includes('library binding') ||
+    binding.includes('spiral-bound') ||
+    productGroup === 'book'
+  ) return 'book';
+  if (productGroup === 'dvd') return 'dvd';
+
   return null;
 }
 
@@ -583,11 +623,13 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   // with a customer-facing message that explains what we DO buy. This runs
   // before the velocity check so a cereal-box scan gets the right reason
   // instead of confusing "low velocity" / "below tier thresholds" noise.
-  const category = detectCategory(extractedFields.category_tree);
+  // Pass full extractedFields so detectCategory can fall back to Keepa's
+  // `binding` / `productGroup` when the category_tree is sparse.
+  const category = detectCategory(extractedFields);
   if (!category) {
     return rejectWith(trace, 4,
       'We only buy books, DVDs, Blu-rays, CDs, and video games',
-      `category_tree=${JSON.stringify(extractedFields.category_tree)}`);
+      `category_tree=${JSON.stringify(extractedFields.category_tree)} binding=${extractedFields.binding} group=${extractedFields.product_group}`);
   }
   extractedFields.category_root = category;
   trace.category = category;

@@ -675,6 +675,44 @@ describe('Category detection', () => {
   test('detects physical book when Kindle/Audible are NOT in tree', () => {
     assert.equal(engine.detectCategory(['Books', 'Literature & Fiction']), 'book');
   });
+
+  // Binding/productGroup fallback — protects against sparse Keepa category trees
+  // for older or niche items where the category tree might miss key keywords.
+  test('falls back to binding=DVD when category_tree is empty', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: 'DVD', product_group: '' }), 'dvd');
+  });
+
+  test('falls back to binding=Audio CD when no media keywords in tree', () => {
+    assert.equal(engine.detectCategory({ category_tree: ['Specialty'], binding: 'Audio CD', product_group: '' }), 'cd');
+  });
+
+  test('falls back to binding=Hardcover when category_tree is empty', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: 'Hardcover', product_group: 'Book' }), 'book');
+  });
+
+  test('falls back to binding=Paperback when category_tree is empty', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: 'Paperback', product_group: '' }), 'book');
+  });
+
+  test('falls back to binding=Video Game when category_tree is empty', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: 'Video Game', product_group: '' }), 'game');
+  });
+
+  test('falls back to binding=Blu-ray when category_tree is empty', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: 'Blu-ray', product_group: '' }), 'bluray');
+  });
+
+  test('falls back to productGroup=Video Games when binding is missing', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: '', product_group: 'Video Games' }), 'game');
+  });
+
+  test('binding=Kindle still rejects (digital format)', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: 'Kindle Edition', product_group: '' }), null);
+  });
+
+  test('still returns null when no signals match anything', () => {
+    assert.equal(engine.detectCategory({ category_tree: ['Toys'], binding: 'Plush', product_group: 'Toy' }), null);
+  });
 });
 
 // ============================================================
