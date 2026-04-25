@@ -351,8 +351,12 @@ function detectCategory(categoryTreeOrFields) {
     categoryTree = categoryTreeOrFields;
   } else if (categoryTreeOrFields && typeof categoryTreeOrFields === 'object') {
     categoryTree = categoryTreeOrFields.category_tree || [];
-    binding = (categoryTreeOrFields.binding || '').toLowerCase();
-    productGroup = (categoryTreeOrFields.product_group || '').toLowerCase();
+    // Normalize: lowercase + strip whitespace/dashes so "Audio CD", "audioCD",
+    // and "audio-cd" all match the same way. Keepa returns binding values in
+    // various formats: "Audio CD", "audioCD", "Blu-ray", "bluray", etc.
+    const norm = (s) => (s || '').toLowerCase().replace(/[\s\-_]/g, '');
+    binding = norm(categoryTreeOrFields.binding);
+    productGroup = norm(categoryTreeOrFields.product_group);
   }
 
   const joined = (Array.isArray(categoryTree) ? categoryTree : []).join(' ').toLowerCase();
@@ -372,8 +376,9 @@ function detectCategory(categoryTreeOrFields) {
   // Vinyl LPs share Amazon's "CDs & Vinyl" category with CDs but have a
   // different binding ("Vinyl" / "Vinyl LP" / "Audio LP"). Reject early
   // so the CDs & Vinyl category match below doesn't accidentally accept them.
-  if (binding === 'vinyl' || binding.includes('vinyl lp') || binding.includes('audio lp')) return null;
-  if (productGroup === 'vinyl' || productGroup.includes('vinyl lp')) return null;
+  // Note: binding/productGroup are already normalized (no spaces/dashes).
+  if (binding === 'vinyl' || binding.includes('vinyllp') || binding.includes('audiolp')) return null;
+  if (productGroup === 'vinyl' || productGroup.includes('vinyllp')) return null;
 
   // Gate 2: physical-media detection. Order matters: bluray before dvd
   // because Amazon nests "Movies & TV > Blu-ray > DVD" in category trees.
@@ -397,19 +402,21 @@ function detectCategory(categoryTreeOrFields) {
   // (Keepa data quality varies for older/niche items), Amazon's `binding` and
   // `productGroup` fields almost always identify the format directly.
   // Order: bluray > dvd > game > cd > book to match Gate 2 priority.
-  if (binding.includes('blu-ray') || binding.includes('bluray')) return 'bluray';
+  // Note: binding/productGroup are normalized (no spaces/dashes/underscores).
+  // So "Audio CD" → "audiocd", "Blu-ray" → "bluray", "Video Game" → "videogame".
+  if (binding.includes('bluray')) return 'bluray';
   if (binding.includes('dvd') || binding.includes('vhs')) return 'dvd';
-  if (binding === 'video game' || binding.includes('video game') || productGroup.includes('video game')) return 'game';
-  if (binding.includes('audio cd') || binding === 'cd') return 'cd';
+  if (binding.includes('videogame') || productGroup.includes('videogame')) return 'game';
+  if (binding.includes('audiocd') || binding === 'cd') return 'cd';
   if (productGroup === 'music') return 'cd';
   if (
     binding.includes('hardcover') ||
     binding.includes('paperback') ||
-    binding.includes('mass market') ||
-    binding.includes('board book') ||
+    binding.includes('massmarket') ||
+    binding.includes('boardbook') ||
     binding === 'book' ||
-    binding.includes('library binding') ||
-    binding.includes('spiral-bound') ||
+    binding.includes('librarybinding') ||
+    binding.includes('spiralbound') ||
     productGroup === 'book'
   ) return 'book';
   if (productGroup === 'dvd') return 'dvd';

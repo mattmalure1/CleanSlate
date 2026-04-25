@@ -731,6 +731,21 @@ describe('Category detection', () => {
     // Confirm the vinyl reject doesn't accidentally block real CDs
     assert.equal(engine.detectCategory({ category_tree: ['CDs & Vinyl', 'Rock'], binding: 'Audio CD', product_group: '' }), 'cd');
   });
+
+  // Keepa actually returns binding values WITHOUT spaces in many cases,
+  // e.g. "audioCD" not "Audio CD". This caught us on the live API.
+  // Make sure the normalized comparison handles all formats.
+  test('handles Keepa no-space binding format "audioCD"', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: 'audioCD', product_group: '' }), 'cd');
+  });
+
+  test('handles Keepa no-space binding "videoGame"', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: 'videoGame', product_group: '' }), 'game');
+  });
+
+  test('handles binding with mixed casing "Audio_CD"', () => {
+    assert.equal(engine.detectCategory({ category_tree: [], binding: 'Audio_CD', product_group: '' }), 'cd');
+  });
 });
 
 // ============================================================
