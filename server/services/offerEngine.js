@@ -28,13 +28,15 @@ const tt = require('./tierThresholds');
 // ------------------------------------------------------------
 
 // Category blacklist (case-insensitive substring match against category_tree joined)
+// NOTE: Do NOT add 'vinyl' here — it would substring-match Amazon's "CDs & Vinyl"
+// parent category and reject all real CDs. Vinyl records are rejected via the
+// binding-based check (Gate 1b) in detectCategory() instead.
 const CATEGORY_BLACKLIST = [
   'textbook',
   'workbook',
   'solutions manual',
   'vhs',
   'cassette',
-  'vinyl',
   'lp record',
   'coloring',
   'journal',
@@ -373,12 +375,24 @@ function detectCategory(categoryTreeOrFields) {
   if (joined.includes('amazon video')) return null;
 
   // Gate 1b: reject vinyl records — Matt's business doesn't buy them.
-  // Vinyl LPs share Amazon's "CDs & Vinyl" category with CDs but have a
-  // different binding ("Vinyl" / "Vinyl LP" / "Audio LP"). Reject early
-  // so the CDs & Vinyl category match below doesn't accidentally accept them.
+  // Vinyl LPs share Amazon's "CDs & Vinyl" parent category with CDs but have a
+  // different binding ("Vinyl" / "Vinyl LP" / "Audio LP") and usually a
+  // "Vinyl" subcategory. Detect both signals.
   // Note: binding/productGroup are already normalized (no spaces/dashes).
   if (binding === 'vinyl' || binding.includes('vinyllp') || binding.includes('audiolp')) return null;
   if (productGroup === 'vinyl' || productGroup.includes('vinyllp')) return null;
+  // Category-tree-based: a "Vinyl" sub-category appears for actual vinyl LPs
+  // (e.g., "CDs & Vinyl > Vinyl > Rock"). For real CDs the tree is "CDs & Vinyl
+  // > Pop" (no "Vinyl" sub-node). Look for " vinyl > " or trailing "vinyl"
+  // — but ONLY if binding doesn't say it's a CD.
+  if (!binding.includes('audiocd') && binding !== 'cd') {
+    // Look for vinyl as a sub-category, not just the parent "CDs & Vinyl"
+    const treeNodes = (Array.isArray(categoryTree) ? categoryTree : []).map(n => (n || '').toLowerCase());
+    for (const node of treeNodes) {
+      // Sub-category like "Vinyl", "Vinyl LP", "Vinyl Records"
+      if (node === 'vinyl' || node.startsWith('vinyl ') || node.includes('lp record')) return null;
+    }
+  }
 
   // Gate 2: physical-media detection. Order matters: bluray before dvd
   // because Amazon nests "Movies & TV > Blu-ray > DVD" in category trees.
