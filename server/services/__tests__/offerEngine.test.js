@@ -17,8 +17,8 @@ const engine = require('../offerEngine');
 // ------------------------------------------------------------
 // V3.1 simplified buyback model: ONE row per category, binary velocity gate.
 const SEED_TIERS = [
-  { category: 'book',   tier: 'T1', min_rank_drops_90: 3, bsr_floor: 0, bsr_ceiling: 999999999, target_pct_bp: 1000, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 0, min_flat_margin_cents: 0 },
-  { category: 'dvd',    tier: 'T1', min_rank_drops_90: 3, bsr_floor: 0, bsr_ceiling: 999999999, target_pct_bp: 1000, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 0, min_flat_margin_cents: 0 },
+  { category: 'book',   tier: 'T1', min_rank_drops_90: 3, bsr_floor: 0, bsr_ceiling: 999999999, target_pct_bp: 1000, solid_pct_bp: 1500, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 0, min_flat_margin_cents: 0 },
+  { category: 'dvd',    tier: 'T1', min_rank_drops_90: 3, bsr_floor: 0, bsr_ceiling: 999999999, target_pct_bp: 1000, solid_pct_bp: 1500, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 0, min_flat_margin_cents: 0 },
   { category: 'bluray', tier: 'T1', min_rank_drops_90: 3, bsr_floor: 0, bsr_ceiling: 999999999, target_pct_bp: 1200, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 0, min_flat_margin_cents: 0 },
   { category: 'cd',     tier: 'T1', min_rank_drops_90: 3, bsr_floor: 0, bsr_ceiling: 999999999, target_pct_bp:  800, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 0, min_flat_margin_cents: 0 },
   { category: 'game',   tier: 'T1', min_rank_drops_90: 3, bsr_floor: 0, bsr_ceiling: 999999999, target_pct_bp: 1500, offer_mode: 'percent', bundle_offer_cents: 10, roi_floor_percent: 0, min_flat_margin_cents: 0 },
@@ -41,6 +41,7 @@ const SEED_CONFIG = {
   // V3 buyback tuning knobs
   min_margin_cents: 30,        // never offer more than (netResale - 30¢)
   max_offer_pct_bp: 2500,      // never offer more than 25% of working price
+  solid_tier_min_price_cents: 1500, // V3.2: working_price >= $15 uses solid_pct_bp
 };
 
 before(() => {
@@ -555,19 +556,32 @@ describe('Step 10/11: ROI floor, final offer, sanity', () => {
 // V3 buyback offer formula
 // ============================================================
 describe('V3: percentage-of-sell-price formula', () => {
-  test('$30 textbook with velocity: percentage offer ≈ 10% (book single tier)', () => {
+  test('$30 textbook hits solid tier (V3.2 dual rate)', () => {
     const r = run(makeExtracted({
-      current_used_buybox_cents: 3000,        // $30
+      current_used_buybox_cents: 3000,        // $30 — above $15 threshold
       avg_90_day_used_buybox_cents: 3000,
       sales_rank_drops_90: 35,
       current_bsr: 100000,
     }));
     assert.equal(r.accepted, true);
-    // 10% of $30 = $3.00 → rounded down to nearest 5¢ = $3.00
-    assert.ok(r.offer_cents >= 295 && r.offer_cents <= 305,
-      `expected ~$3.00, got $${r.offer_cents/100}`);
+    // 15% of $30 = $4.50 (solid tier)
+    assert.ok(r.offer_cents >= 445 && r.offer_cents <= 455,
+      `expected ~$4.50, got $${r.offer_cents/100}`);
     assert.equal(r.calculation_trace.tier_offer_mode, 'percent');
-    assert.equal(r.calculation_trace.target_pct_bp, 1000);
+    assert.equal(r.calculation_trace.price_band, 'solid');
+  });
+
+  test('$10 book hits cheap tier (V3.2 dual rate)', () => {
+    const r = run(makeExtracted({
+      current_used_buybox_cents: 1000,        // $10 — below $15 threshold
+      avg_90_day_used_buybox_cents: 1000,
+      sales_rank_drops_90: 35,
+      current_bsr: 100000,
+    }));
+    if (r.accepted && !r.is_penny_tier) {
+      // Cheap rate is 10% of $10 = $1.00. May be lower due to Amazon math.
+      assert.equal(r.calculation_trace.price_band, 'cheap');
+    }
   });
 
   test('$5 book at T1: percentage capped by Amazon math → bundle', () => {

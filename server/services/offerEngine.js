@@ -805,9 +805,20 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
     finalOffer = 0;
     trace.tier_offer_mode = 'velocity_gate';
   } else {
-    const targetPctBp = assignedTier.target_pct_bp ?? 1000; // 10% default
+    // V3.2: dual-tier percentage. Items priced at or above the solid
+    // threshold (default $15) get the higher solid_pct_bp; cheaper items
+    // get target_pct_bp. Categories without solid_pct_bp use target_pct_bp
+    // for everything (single-rate fallback).
+    let solidThreshold = 1500; // $15 default
+    try { solidThreshold = tt.getConfig('solid_tier_min_price_cents'); } catch (_) { /* keep default */ }
+
+    const cheapPctBp = assignedTier.target_pct_bp ?? 1000;
+    const solidPctBp = assignedTier.solid_pct_bp ?? cheapPctBp;
+    const targetPctBp = workingPrice >= solidThreshold ? solidPctBp : cheapPctBp;
     const targetPct = targetPctBp / 10000;
     percentOffer = Math.floor(workingPrice * targetPct);
+
+    trace.price_band = workingPrice >= solidThreshold ? 'solid' : 'cheap';
 
     let minMargin = 30; // 30¢ default
     try { minMargin = tt.getConfig('min_margin_cents'); } catch (_) { /* keep default */ }

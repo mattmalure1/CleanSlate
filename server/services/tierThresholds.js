@@ -64,6 +64,9 @@ async function loadThresholds() {
       // is null. After migration runs, all rows will have these populated.
       bsr_floor: row.bsr_floor ?? 0,
       target_pct_bp: row.target_pct_bp ?? null,
+      // V3.2: solid_pct_bp is the rate for working_price >= solid_tier_min_price_cents.
+      // If null, target_pct_bp is used for all prices (single-rate behavior).
+      solid_pct_bp: row.solid_pct_bp ?? null,
       offer_mode: row.offer_mode ?? 'percent',
       bundle_offer_cents: row.bundle_offer_cents ?? 10,
     };
