@@ -77,6 +77,22 @@ export default function HomePage() {
                 <Camera size={18} />
                 Or scan a barcode with your camera
               </button>
+
+              {/* Trust pills — anchor the hero with explicit promises */}
+              <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs sm:text-sm text-brand-100">
+                <span className="flex items-center gap-1.5">
+                  <Check size={15} className="text-brand-300" />
+                  <span className="font-semibold">No Fees</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Check size={15} className="text-brand-300" />
+                  <span className="font-semibold">Free Shipping</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Check size={15} className="text-brand-300" />
+                  <span className="font-semibold">Quote = Payment</span>
+                </span>
+              </div>
             </div>
 
             {/* Right — hero image */}
@@ -86,6 +102,48 @@ export default function HomePage() {
                 alt="Person scanning a book barcode with their phone"
                 className="w-full max-w-sm rounded-2xl shadow-2xl shadow-black/30"
               />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── BENEFITS ROW (under hero, builds trust) ─── */}
+      <section className="bg-white border-b border-border/40">
+        <div className="max-w-5xl mx-auto px-[var(--spacing-page)] py-7 grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center flex-shrink-0">
+              <Zap size={18} className="text-brand-600" strokeWidth={2.2} />
+            </div>
+            <div>
+              <p className="font-display font-bold text-sm text-text-primary">Fast Payout</p>
+              <p className="text-xs text-text-secondary mt-0.5 leading-snug">Paid 1-2 days after we receive your box.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center flex-shrink-0">
+              <ShieldCheck size={18} className="text-brand-600" strokeWidth={2.2} />
+            </div>
+            <div>
+              <p className="font-display font-bold text-sm text-text-primary">Quote Guarantee</p>
+              <p className="text-xs text-text-secondary mt-0.5 leading-snug">We never downgrade prices on receipt.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center flex-shrink-0">
+              <Truck size={18} className="text-brand-600" strokeWidth={2.2} />
+            </div>
+            <div>
+              <p className="font-display font-bold text-sm text-text-primary">No Fees, Free Shipping</p>
+              <p className="text-xs text-text-secondary mt-0.5 leading-snug">Prepaid USPS label included.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center flex-shrink-0">
+              <Package size={18} className="text-brand-600" strokeWidth={2.2} />
+            </div>
+            <div>
+              <p className="font-display font-bold text-sm text-text-primary">Bulk Friendly</p>
+              <p className="text-xs text-text-secondary mt-0.5 leading-snug">Scan 50+ items at once with your camera.</p>
             </div>
           </div>
         </div>
@@ -154,6 +212,25 @@ export default function HomePage() {
                 <span className="font-display font-semibold text-sm text-text-primary">{label}</span>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─── QUOTE GUARANTEE CALLOUT (the trust differentiator) ─── */}
+      <section className="bg-white border-y border-brand-100">
+        <div className="max-w-4xl mx-auto px-[var(--spacing-page)] py-12">
+          <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
+            <div className="flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-accept-light border border-accept/20 flex items-center justify-center">
+              <ShieldCheck size={36} className="text-accept" strokeWidth={2} />
+            </div>
+            <div className="flex-1 text-center sm:text-left">
+              <h2 className="font-display text-xl sm:text-2xl font-bold text-text-primary">
+                Quote Guarantee — what we quote is what we pay.
+              </h2>
+              <p className="mt-2 text-sm sm:text-base text-text-secondary leading-relaxed">
+                Other buyback sites quote one price online and pay less when your box arrives, blaming "condition." We don't do that. The number you see is the number you get — period. Just keep items in the condition listed on our <span className="font-semibold text-text-primary">What We Accept</span> page.
+              </p>
+            </div>
           </div>
         </div>
       </section>

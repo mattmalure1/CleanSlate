@@ -80,9 +80,8 @@ export default function QuoteCard({ data, onCaseToggle }) {
         {imageUrl && (
           <img
             src={imageUrl}
-            alt=""
-            className="w-24 h-24 rounded-[var(--radius-md)] object-cover bg-background flex-shrink-0"
             alt={title || 'Product image'}
+            className="w-24 h-24 rounded-[var(--radius-md)] object-cover bg-background flex-shrink-0"
           />
         )}
 
