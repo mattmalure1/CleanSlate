@@ -662,68 +662,24 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   extractedFields.category_root = category;
   trace.category = category;
 
-  // 4b: Velocity check against the spec §4.1 rule 3 floor.
+  // 4b: Capture velocity signal. The actual velocity gate happens in
+  // Step 10 — items below the threshold go to bundle (if priced viable)
+  // or get rejected in Step 11. Centralizing the gate avoids the old
+  // duplicated bundle paths in 4b and 11.
   const rankDrops90 = extractedFields.sales_rank_drops_90;
   trace.velocity_signal = rankDrops90;
 
-  if (rankDrops90 < 4) {
-    // Low velocity on Amazon — but might still work in an eBay genre bundle.
-    // Gate: must have a used buybox price >= $3.00 (proves the item has real
-    // resale value, not just junk) and can't be a reject sub-category.
-    const EBAY_LOW_VELOCITY_MIN_PRICE = 300; // $3.00
-    const LOW_VELOCITY_BUNDLE_OFFER = 5;     // legacy 5¢ for very-low-velocity items
-    const currentPrice = extractedFields.current_used_buybox_cents ?? extractedFields.current_new_3p_cents;
-    if (currentPrice && currentPrice >= EBAY_LOW_VELOCITY_MIN_PRICE) {
-      const subCat = classifySubCategory(category, extractedFields.title);
-      if (!subCat.reject) {
-        trace.final_offer_cents = LOW_VELOCITY_BUNDLE_OFFER;
-        trace.penny_tier_applied = true;
-        trace.penny_offer_cents = LOW_VELOCITY_BUNDLE_OFFER;
-        trace.penny_net_profit_cents = null;
-        trace.sub_category = subCat.subCategory;
-        trace.genre = subCat.genre || null;
-        trace.disposition = 'ebay_bundle';
-        trace.bundle_label = subCat.bundleLabel || formatBundleLabel(category, subCat.genre || 'mixed');
-        trace.ebay_fallback = true;
-        trace.ebay_fallback_reason = 'low_velocity';
-        return acceptWith(trace, LOW_VELOCITY_BUNDLE_OFFER, 'T4', true);
-      }
-    }
-    return rejectWith(trace, 4, 'Low velocity — sold fewer than 4 times in 90 days',
-      `sales_rank_drops_90=${rankDrops90}`);
-  }
-
-  // 4c: Tier lookup + walking. Primary signal is rank drops; BSR ceiling
-  // is the secondary gate per Matt's spec clarification.
+  // 4c: Single tier lookup per category (v3.1 simplification — was
+  // walking 4-5 BSR-banded tiers, now just one row per category with a
+  // binary velocity gate). Items below the velocity threshold fall
+  // through to the bundle path in Step 11 if their price supports it.
   const tiers = tt.getTiersForCategory(category);
   if (!tiers || tiers.length === 0) {
-    // Should never happen in production — every detectCategory output
-    // has a matching seed row in tier_thresholds. Kept as a safety net.
     return rejectWith(trace, 4, 'Category not accepted', `no_tiers_for:${category}`);
   }
-
-  // Walk tiers from strictest (T1) to loosest, assign first one we qualify for.
-  // BSR is the secondary gate per Matt: rank drops primary, BSR as ceiling.
-  let assignedTier = null;
-  for (const tier of tiers) {
-    if (rankDrops90 >= tier.min_rank_drops_90) {
-      // Secondary BSR gate
-      if (extractedFields.current_bsr != null &&
-          extractedFields.current_bsr > tier.bsr_ceiling) {
-        // Too deep in this tier's BSR range — try a lower tier
-        continue;
-      }
-      assignedTier = tier;
-      break;
-    }
-  }
-
-  if (!assignedTier) {
-    // Could be below min_rank_drops_90 threshold or BSR exceeded every tier
-    return rejectWith(trace, 4, 'Below all tier thresholds',
-      `drops90=${rankDrops90} bsr=${extractedFields.current_bsr}`);
-  }
+  const assignedTier = tiers[0];
   trace.tier_assigned = assignedTier.tier;
+  trace.velocity_meets_threshold = rankDrops90 >= assignedTier.min_rank_drops_90;
 
   // ===== STEP 5: Price determination (the spec §4.1 rule 1 change) =====
   // Uses USED buy box (Keepa index 32), not new buy box — this is a used-media buyback.
@@ -737,13 +693,12 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
     return rejectWith(trace, 5, 'Insufficient price history');
   }
 
+  // V3.1: Volatility rejection removed. The min(current, avg) working
+  // price below already protects against price crashes by always using
+  // the lower of the two. The 30% threshold was rejecting <5% of items
+  // and the simpler floor handles the same risk.
   const volatility = Math.abs(currentPrice - avgPrice) / avgPrice;
   trace.volatility_ratio = volatility;
-
-  if (volatility > 0.30) {
-    return rejectWith(trace, 5, 'Price too volatile',
-      `volatility_ratio=${volatility.toFixed(3)}`);
-  }
 
   const workingPrice = Math.min(currentPrice, avgPrice);
   trace.working_price_cents = workingPrice;
@@ -825,28 +780,24 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   // Phase 2 wires actual inventory_on_hand throttling.
   trace.inventory_penalty_applied = 1.0;
 
-  // ===== STEP 10: V3 buyback offer formula (percentage of sell price) =====
+  // ===== STEP 10: Offer formula (v3.1) =====
   //
-  // The offer is the LOWEST of three numbers:
-  //   1. percentOffer = workingPrice × tier_pct (e.g., 18% for hot books)
-  //   2. amazonMax  = netResale - min_margin (never lose money on Amazon)
-  //   3. hardCap   = workingPrice × max_offer_pct (never offer more than 25%)
+  // If the item meets the velocity gate, calculate offer as the LOWEST of:
+  //   1. percentOffer = workingPrice × tier_pct
+  //   2. amazonMax    = netResale - min_margin (never lose money on Amazon)
+  //   3. hardCap      = workingPrice × max_offer_pct (never offer >25%)
   //
-  // If the result is below 5¢ but the item still has velocity AND a viable
-  // sub-category, fall through to bundle tier (Step 11). Otherwise reject.
-  //
-  // Tiers configured with offer_mode='bundle' skip this entirely and go
-  // straight to bundle pricing — used for slow-mover bands where Amazon
-  // math will never work but the item belongs in an eBay genre lot.
+  // Below the velocity threshold OR result < 5¢ → fall to bundle in Step 11.
   let finalOffer;
   let percentOffer = 0;
   let amazonMax = 0;
   let hardCap = 0;
 
-  if (assignedTier.offer_mode === 'bundle') {
-    // Tier configured as bundle-only — straight to bundle pricing
-    finalOffer = 0; // forces fallthrough to Step 11 bundle path
-    trace.tier_offer_mode = 'bundle';
+  if (!trace.velocity_meets_threshold) {
+    // Velocity below tier threshold — force bundle path. Step 11 will
+    // either bundle-accept (if priced viable) or reject.
+    finalOffer = 0;
+    trace.tier_offer_mode = 'velocity_gate';
   } else {
     const targetPctBp = assignedTier.target_pct_bp ?? 1000; // 10% default
     const targetPct = targetPctBp / 10000;
@@ -873,16 +824,22 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   }
   trace.final_offer_cents = finalOffer;
 
-  // ===== STEP 11: Bundle/penny fallback + sanity checks =====
+  // ===== STEP 11: Bundle fallback + sanity checks =====
   //
-  // V3: If the percentage offer rounded down to less than $0.05 (or this is
-  // a bundle-mode tier), the item is too low-margin for individual FBA but
-  // may still be profitable in an eBay genre bundle. Fall through to penny
-  // tier ($0.05 default for books/DVDs/CDs/blu-rays, $0.10 for games).
+  // Items reach here when either:
+  //   - Velocity gate failed (low/no sales drops in 90 days)
+  //   - Percentage offer rounded below 5¢ (Amazon math underwater)
   //
-  // Reject if the sub-category classifier flags this as truly unsellable
-  // (romance pulp, Kidz Bop, sports games, etc.).
+  // We accept as bundle if the item has resale value (>= $3) and a
+  // viable sub-category. Otherwise reject.
   if (finalOffer < 5) {
+    const BUNDLE_MIN_PRICE_CENTS = 300; // $3.00 — items below this won't sell even in bulk
+
+    if (workingPrice < BUNDLE_MIN_PRICE_CENTS) {
+      return rejectWith(trace, 11, 'Sell price too low for bundle channel',
+        `working_price=${workingPrice} bundle_min=${BUNDLE_MIN_PRICE_CENTS}`);
+    }
+
     const subCat = classifySubCategory(category, extractedFields.title);
     trace.sub_category = subCat.subCategory;
     trace.genre = subCat.genre || null;
@@ -894,7 +851,6 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
         `sub_category=${subCat.subCategory}`);
     }
 
-    // Use the tier-configured bundle offer (5¢ default, 10¢ for games)
     const bundleOffer = assignedTier.bundle_offer_cents ?? 10;
     trace.final_offer_cents = bundleOffer;
     trace.penny_tier_applied = true;
