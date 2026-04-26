@@ -295,8 +295,21 @@ describe('Step 5: Price determination', () => {
     assert.equal(r.calculation_trace.rejection_step, 5);
   });
 
-  test('rejects when avg_90_day is null', () => {
-    const r = run(makeExtracted({ avg_90_day_used_buybox_cents: null }));
+  test('falls back to avg_180_day when avg_90_day is null', () => {
+    const r = run(makeExtracted({
+      avg_90_day_used_buybox_cents: null,
+      avg_180_day_used_buybox_cents: 2000,
+    }));
+    // 180-day fallback should kick in — no rejection at step 5
+    assert.notEqual(r.calculation_trace.rejection_step, 5);
+    assert.equal(r.calculation_trace.avg_window_used, '180d');
+  });
+
+  test('rejects when both avg_90_day AND avg_180_day are null', () => {
+    const r = run(makeExtracted({
+      avg_90_day_used_buybox_cents: null,
+      avg_180_day_used_buybox_cents: null,
+    }));
     assert.equal(r.rejection_reason, 'Insufficient price history');
     assert.equal(r.calculation_trace.rejection_step, 5);
   });

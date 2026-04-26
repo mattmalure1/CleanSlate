@@ -681,10 +681,15 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   trace.tier_assigned = assignedTier.tier;
   trace.velocity_meets_threshold = rankDrops90 >= assignedTier.min_rank_drops_90;
 
-  // ===== STEP 5: Price determination (the spec §4.1 rule 1 change) =====
-  // Uses USED buy box (Keepa index 32), not new buy box — this is a used-media buyback.
+  // ===== STEP 5: Price determination =====
+  // Uses USED buy box (Keepa index 32). For slow movers, the 90-day window
+  // may be sparse — fall back to the 180-day window before giving up.
   const currentPrice = extractedFields.current_used_buybox_cents ?? extractedFields.current_new_3p_cents;
-  const avgPrice     = extractedFields.avg_90_day_used_buybox_cents;
+  const avg90  = extractedFields.avg_90_day_used_buybox_cents;
+  const avg180 = extractedFields.avg_180_day_used_buybox_cents;
+  const avgPrice = (avg90 != null && avg90 > 0) ? avg90
+                 : (avg180 != null && avg180 > 0) ? avg180
+                 : null;
 
   if (currentPrice == null || currentPrice <= 0) {
     return rejectWith(trace, 5, 'No active price');
@@ -692,6 +697,7 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   if (avgPrice == null || avgPrice <= 0) {
     return rejectWith(trace, 5, 'Insufficient price history');
   }
+  trace.avg_window_used = (avgPrice === avg90) ? '90d' : '180d';
 
   // V3.1: Volatility rejection removed. The min(current, avg) working
   // price below already protects against price crashes by always using
