@@ -178,12 +178,35 @@ export default function BarcodeScanner({ onScan, onClose }) {
   }
 
   // ── Barcode detected callback ──
-  const onBarcode = useCallback((rawValue) => {
-    if (!rawValue || recentScans.current.has(rawValue)) return;
+  // Two layers of dedup:
+  //   1. Short-window dedup (4s) on the normalized code — catches cases
+  //      where the detector reads the same physical barcode multiple
+  //      times in succession (camera lingering on it).
+  //   2. Per-scan-session "already in results" check — if we've already
+  //      successfully looked up this barcode in this scanner session,
+  //      don't re-trigger a network call.
+  // Normalization strips leading zeros and non-digits so UPC-A
+  // (12 digits, "786936...") and EAN-13 (13 digits, "0786936...")
+  // representations of the same product get treated as identical.
+  function normalizeBarcode(code) {
+    if (!code) return '';
+    return String(code).replace(/\D/g, '').replace(/^0+/, '');
+  }
 
-    // Debounce: ignore same barcode for 1.5 seconds
-    recentScans.current.add(rawValue);
-    setTimeout(() => recentScans.current.delete(rawValue), 1500);
+  const onBarcode = useCallback((rawValue) => {
+    if (!rawValue) return;
+    const normalized = normalizeBarcode(rawValue);
+    if (!normalized) return;
+
+    // Check if already in this session's results — prevent re-lookup of
+    // an item the user has already added or seen rejected.
+    if (recentScans.current.has(normalized)) return;
+
+    // 4-second cooldown on the normalized code (was 1.5s — too short
+    // for users who linger or for cases where the detector flickers
+    // between UPC-A and EAN-13 representations).
+    recentScans.current.add(normalized);
+    setTimeout(() => recentScans.current.delete(normalized), 4000);
 
     // Haptic + scan beep
     vibrate();
