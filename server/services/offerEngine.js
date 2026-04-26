@@ -311,9 +311,16 @@ function extractKeepaFields(product) {
     sales_rank_drops_180: stats.salesRankDrops180 ?? 0,
 
     // Competition
+    // buyBoxEligibleOfferCounts is [newFBA, newFBM, usedFBA, usedFBM, ...].
+    // Used-FBA is the real competition for our used-media buyback (we'll
+    // be selling used via FBA, fighting other used-FBA sellers for the
+    // buy box). Total used offers can be misleading because most of them
+    // are usually FBM and don't dominate the buy box.
     new_offer_count: nz(cur[11]) ?? 0,
     used_offer_count: nz(cur[12]) ?? 0,
     fba_offer_count: product.newOffersFBA ?? 0,
+    used_fba_offer_count: (product.buyBoxEligibleOfferCounts || [])[2] ?? 0,
+    used_fbm_offer_count: (product.buyBoxEligibleOfferCounts || [])[3] ?? 0,
     amazon_is_seller: (cur[0] != null && cur[0] !== -1),
 
     // Package dims
@@ -752,14 +759,26 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   }
   trace.competition_penalty_applied = competitionPenalty;
 
-  // V3.2: Market-saturation gate. Real saturation = LOTS of offers AND
-  // low velocity (LOTR paperback: 200 offers, 5 sales). A popular item
-  // with 50+ offers but 60+ sales/90 days isn't saturated — it's hot
-  // enough that there's a buyer for every seller. Use the offers/sales
-  // ratio as the actual signal.
+  // V3.3: Used-FBA saturation gate. We sell used via Amazon FBA, so what
+  // matters is how many OTHER used-FBA sellers we'd compete with — not
+  // the total offer count (which includes FBM and new). Low used-FBA
+  // count + decent velocity = we'll win the buy box regularly.
+  // High used-FBA count + low velocity = piled-up inventory.
   const totalOffers = (extractedFields.new_offer_count || 0) + (extractedFields.used_offer_count || 0);
+  const usedFbaOffers = extractedFields.used_fba_offer_count || 0;
   trace.total_offer_count = totalOffers;
-  if (totalOffers > 50 && rankDrops90 < 10) {
+  trace.used_fba_offer_count = usedFbaOffers;
+
+  // Real saturation: lots of used FBA sellers + not enough sales to keep
+  // them all moving. Threshold: >20 used FBA sellers AND <20 sales/90d
+  // means each seller would average <1 sale/quarter.
+  if (usedFbaOffers > 20 && rankDrops90 < 20) {
+    return rejectWith(trace, 6, 'Market saturated — too many FBA sellers, too few buyers',
+      `used_fba_offers=${usedFbaOffers} drops_90=${rankDrops90}`);
+  }
+  // Belt-and-suspenders: extreme total saturation (LOTR paperback case)
+  // even when FBA count is missing/low.
+  if (totalOffers > 100 && rankDrops90 < 10) {
     return rejectWith(trace, 6, 'Market saturated — too many sellers, too few buyers',
       `total_offers=${totalOffers} drops_90=${rankDrops90}`);
   }
