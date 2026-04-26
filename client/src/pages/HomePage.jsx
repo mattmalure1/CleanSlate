@@ -69,13 +69,13 @@ export default function HomePage() {
                 </button>
               </form>
 
-              {/* Scan button */}
+              {/* Scan button — prominent secondary CTA */}
               <button
                 onClick={() => { setScannerOpen(true); setResult(null); setSearchQuery(''); }}
-                className="mt-4 inline-flex items-center gap-2 text-white/80 hover:text-white text-sm font-medium cursor-pointer min-h-[44px]"
+                className="mt-4 w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/25 backdrop-blur-sm border border-white/25 text-white font-semibold text-sm transition-all min-h-[52px] cursor-pointer"
               >
-                <Camera size={18} />
-                Or scan a barcode with your camera
+                <ScanBarcode size={22} className="text-brand-200" strokeWidth={2.2} />
+                Scan a barcode
               </button>
 
               {/* Trust pills — anchor the hero with explicit promises */}
@@ -90,7 +90,7 @@ export default function HomePage() {
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Check size={15} className="text-brand-300" />
-                  <span className="font-semibold">Quote = Payment</span>
+                  <span className="font-semibold">Fast Payment</span>
                 </span>
               </div>
             </div>
@@ -109,7 +109,7 @@ export default function HomePage() {
 
       {/* ─── BENEFITS ROW (under hero, builds trust) ─── */}
       <section className="bg-white border-b border-border/40">
-        <div className="max-w-5xl mx-auto px-[var(--spacing-page)] py-7 grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="max-w-5xl mx-auto px-[var(--spacing-page)] py-6 sm:py-7 grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-x-3 gap-y-5">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center flex-shrink-0">
               <Zap size={18} className="text-brand-600" strokeWidth={2.2} />
@@ -124,8 +124,8 @@ export default function HomePage() {
               <ShieldCheck size={18} className="text-brand-600" strokeWidth={2.2} />
             </div>
             <div>
-              <p className="font-display font-bold text-sm text-text-primary">Quote Guarantee</p>
-              <p className="text-xs text-text-secondary mt-0.5 leading-snug">We never downgrade prices on receipt.</p>
+              <p className="font-display font-bold text-sm text-text-primary">Transparent Pricing</p>
+              <p className="text-xs text-text-secondary mt-0.5 leading-snug">Items in good condition get the full quote.</p>
             </div>
           </div>
           <div className="flex items-start gap-3">
@@ -216,7 +216,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ─── QUOTE GUARANTEE CALLOUT (the trust differentiator) ─── */}
+      {/* ─── FAIR PRICING CALLOUT ─── */}
       <section className="bg-white border-y border-brand-100">
         <div className="max-w-4xl mx-auto px-[var(--spacing-page)] py-12">
           <div className="flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
@@ -225,10 +225,10 @@ export default function HomePage() {
             </div>
             <div className="flex-1 text-center sm:text-left">
               <h2 className="font-display text-xl sm:text-2xl font-bold text-text-primary">
-                Quote Guarantee — what we quote is what we pay.
+                Fair pricing, no surprises.
               </h2>
               <p className="mt-2 text-sm sm:text-base text-text-secondary leading-relaxed">
-                Other buyback sites quote one price online and pay less when your box arrives, blaming "condition." We don't do that. The number you see is the number you get — period. Just keep items in the condition listed on our <span className="font-semibold text-text-primary">What We Accept</span> page.
+                If your items meet the condition listed on our <span className="font-semibold text-text-primary">What We Accept</span> page, you get the full quoted amount — no hidden grading downgrades. If something arrives damaged or doesn't match, we'll send you photos and an adjusted offer with a clear explanation. You decide whether to accept it.
               </p>
             </div>
           </div>
