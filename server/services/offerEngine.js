@@ -667,8 +667,21 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   // Step 10 — items below the threshold go to bundle (if priced viable)
   // or get rejected in Step 11. Centralizing the gate avoids the old
   // duplicated bundle paths in 4b and 11.
-  const rankDrops90 = extractedFields.sales_rank_drops_90;
+  const rankDrops30  = extractedFields.sales_rank_drops_30  || 0;
+  const rankDrops90  = extractedFields.sales_rank_drops_90  || 0;
+  const rankDrops180 = extractedFields.sales_rank_drops_180 || 0;
   trace.velocity_signal = rankDrops90;
+
+  // 4c: V3.3 dead-inventory reject. Items with zero sales activity across
+  // ALL three Keepa windows haven't moved in ~6 months. Even an eBay
+  // genre lot won't help these — they're not sought-after anywhere.
+  // Reject before we eat the shipping cost. (We require all three to be
+  // zero so we don't false-reject items where Keepa just has stale data
+  // for one window.)
+  if (rankDrops30 === 0 && rankDrops90 === 0 && rankDrops180 === 0) {
+    return rejectWith(trace, 4, 'No sales activity in the last 6 months — item is unlikely to sell',
+      `drops_30=0 drops_90=0 drops_180=0`);
+  }
 
   // 4c: Single tier lookup per category (v3.1 simplification — was
   // walking 4-5 BSR-banded tiers, now just one row per category with a
@@ -826,11 +839,24 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
 
     const cheapPctBp = assignedTier.target_pct_bp ?? 1000;
     const solidPctBp = assignedTier.solid_pct_bp ?? cheapPctBp;
-    const targetPctBp = workingPrice >= solidThreshold ? solidPctBp : cheapPctBp;
+    const basePctBp = workingPrice >= solidThreshold ? solidPctBp : cheapPctBp;
+
+    // V3.3 velocity bonus — reward items that actually move.
+    // The 25% hard cap below still applies as a safety ceiling.
+    let velocityBonusBp = 0;
+    if (rankDrops90 >= 40) velocityBonusBp = 300;       // +3 percentage points (HOT)
+    else if (rankDrops90 >= 20) velocityBonusBp = 150;  // +1.5 percentage points (GOOD)
+
+    const targetPctBp = basePctBp + velocityBonusBp;
     const targetPct = targetPctBp / 10000;
     percentOffer = Math.floor(workingPrice * targetPct);
 
     trace.price_band = workingPrice >= solidThreshold ? 'solid' : 'cheap';
+    trace.velocity_tier = rankDrops90 >= 40 ? 'hot'
+                        : rankDrops90 >= 20 ? 'good'
+                        : rankDrops90 >= 3  ? 'normal'
+                        : 'slow';
+    trace.velocity_bonus_bp = velocityBonusBp;
 
     let minMargin = 30; // 30¢ default
     try { minMargin = tt.getConfig('min_margin_cents'); } catch (_) { /* keep default */ }

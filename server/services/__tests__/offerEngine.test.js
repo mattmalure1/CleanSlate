@@ -556,19 +556,20 @@ describe('Step 10/11: ROI floor, final offer, sanity', () => {
 // V3 buyback offer formula
 // ============================================================
 describe('V3: percentage-of-sell-price formula', () => {
-  test('$30 textbook hits solid tier (V3.2 dual rate)', () => {
+  test('$30 textbook hits solid tier (V3.2 dual rate + V3.3 velocity bonus)', () => {
     const r = run(makeExtracted({
       current_used_buybox_cents: 3000,        // $30 — above $15 threshold
       avg_90_day_used_buybox_cents: 3000,
-      sales_rank_drops_90: 35,
+      sales_rank_drops_90: 35,                 // GOOD velocity (+1.5%)
       current_bsr: 100000,
     }));
     assert.equal(r.accepted, true);
-    // 15% of $30 = $4.50 (solid tier)
-    assert.ok(r.offer_cents >= 445 && r.offer_cents <= 455,
-      `expected ~$4.50, got $${r.offer_cents/100}`);
+    // 15% solid base + 1.5% good-velocity bonus = 16.5% of $30 = $4.95
+    assert.ok(r.offer_cents >= 490 && r.offer_cents <= 500,
+      `expected ~$4.95, got $${r.offer_cents/100}`);
     assert.equal(r.calculation_trace.tier_offer_mode, 'percent');
     assert.equal(r.calculation_trace.price_band, 'solid');
+    assert.equal(r.calculation_trace.velocity_tier, 'good');
   });
 
   test('$10 book hits cheap tier (V3.2 dual rate)', () => {
@@ -625,6 +626,54 @@ describe('V3: percentage-of-sell-price formula', () => {
       // amazon_max_cents should leave at least min_margin (30¢) gap from netResale
       assert.ok(trace.amazon_max_cents != null);
       assert.equal(trace.net_resale_cents - trace.amazon_max_cents, 30);
+    }
+  });
+
+  // V3.3 dead-inventory reject + velocity bonus
+  test('dead inventory: 0 drops in all 3 windows → reject', () => {
+    const r = run(makeExtracted({
+      sales_rank_drops_30: 0,
+      sales_rank_drops_90: 0,
+      sales_rank_drops_180: 0,
+    }));
+    assert.equal(r.accepted, false);
+    assert.equal(r.calculation_trace.rejection_step, 4);
+    assert.match(r.rejection_reason, /No sales activity/);
+  });
+
+  test('one window has data → not rejected as dead', () => {
+    const r = run(makeExtracted({
+      sales_rank_drops_30: 0,
+      sales_rank_drops_90: 0,
+      sales_rank_drops_180: 5,  // had movement 90-180 days ago
+    }));
+    // Should NOT reject as dead (still has 180-day signal)
+    assert.notEqual(r.rejection_reason, 'No sales activity in the last 6 months — item is unlikely to sell');
+  });
+
+  test('HOT velocity (40+ drops) gets +3% bonus', () => {
+    const r = run(makeExtracted({
+      current_used_buybox_cents: 3000,
+      avg_90_day_used_buybox_cents: 3000,
+      sales_rank_drops_90: 50,  // HOT
+      current_bsr: 100000,
+    }));
+    if (r.accepted && !r.is_penny_tier) {
+      assert.equal(r.calculation_trace.velocity_tier, 'hot');
+      assert.equal(r.calculation_trace.velocity_bonus_bp, 300);
+    }
+  });
+
+  test('NORMAL velocity (3-19 drops) gets no bonus', () => {
+    const r = run(makeExtracted({
+      current_used_buybox_cents: 3000,
+      avg_90_day_used_buybox_cents: 3000,
+      sales_rank_drops_90: 10,  // NORMAL
+      current_bsr: 100000,
+    }));
+    if (r.accepted && !r.is_penny_tier) {
+      assert.equal(r.calculation_trace.velocity_tier, 'normal');
+      assert.equal(r.calculation_trace.velocity_bonus_bp, 0);
     }
   });
 
