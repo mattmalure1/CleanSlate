@@ -46,8 +46,10 @@ export default function QuoteCard({ data, onCaseToggle }) {
         ? 'bg-warning-light border-warning/20'
         : 'bg-reject-light border-reject/20';
 
+  const [capError, setCapError] = useState(null);
+
   function handleAdd() {
-    addItem({
+    const result = addItem({
       asin,
       title,
       imageUrl,
@@ -60,6 +62,11 @@ export default function QuoteCard({ data, onCaseToggle }) {
       label,
       tier: isPenny ? 'penny' : 'standard',
     });
+    if (result && result.ok === false) {
+      setCapError(result.reason || 'Per-item max reached');
+      setTimeout(() => setCapError(null), 3000);
+      return;
+    }
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   }
@@ -158,20 +165,25 @@ export default function QuoteCard({ data, onCaseToggle }) {
 
       {/* Add to Cart */}
       {isOffer && offerCents > 0 && (
-        <button
-          onClick={handleAdd}
-          disabled={added}
-          className={`mt-4 w-full flex items-center justify-center gap-2 font-semibold text-sm py-3.5 rounded-[var(--radius-md)] min-h-[52px] cursor-pointer ${
-            added
-              ? 'bg-accept text-white'
-              : isPenny
-                ? 'bg-amber-500 hover:bg-amber-600 text-white active:scale-[0.97]'
-                : 'bg-brand-600 hover:bg-brand-700 text-white active:scale-[0.97]'
-          }`}
-        >
-          <ShoppingCart size={18} />
-          {added ? 'Added!' : isPenny ? 'Bulk Add to Cart' : 'Add to Cart'}
-        </button>
+        <>
+          <button
+            onClick={handleAdd}
+            disabled={added}
+            className={`mt-4 w-full flex items-center justify-center gap-2 font-semibold text-sm py-3.5 rounded-[var(--radius-md)] min-h-[52px] cursor-pointer ${
+              added
+                ? 'bg-accept text-white'
+                : isPenny
+                  ? 'bg-amber-500 hover:bg-amber-600 text-white active:scale-[0.97]'
+                  : 'bg-brand-600 hover:bg-brand-700 text-white active:scale-[0.97]'
+            }`}
+          >
+            <ShoppingCart size={18} />
+            {added ? 'Added!' : isPenny ? 'Bulk Add to Cart' : 'Add to Cart'}
+          </button>
+          {capError && (
+            <p className="mt-2 text-sm text-reject font-medium text-center">{capError}</p>
+          )}
+        </>
       )}
 
       {/* Why this price? */}

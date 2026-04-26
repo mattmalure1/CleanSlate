@@ -15,6 +15,24 @@ router.post('/api/order', async (req, res) => {
       return res.status(400).json({ error: 'Name and email required' });
     }
 
+    // Anti-fraud: cap copies of any single ASIN at MAX_COPIES_PER_ASIN.
+    // This prevents bad actors from flooding us with 50 of the same item
+    // (worthless inventory we can't move). Legit customers rarely have 5+
+    // copies of the same exact ISBN/UPC.
+    const MAX_COPIES_PER_ASIN = 5;
+    const counts = {};
+    for (const item of items) {
+      if (!item.asin) continue;
+      counts[item.asin] = (counts[item.asin] || 0) + 1;
+    }
+    for (const [asin, count] of Object.entries(counts)) {
+      if (count > MAX_COPIES_PER_ASIN) {
+        return res.status(400).json({
+          error: `We accept up to ${MAX_COPIES_PER_ASIN} copies of any single item per order. You have ${count} copies of "${items.find(i => i.asin === asin)?.title || asin}".`,
+        });
+      }
+    }
+
     // Minimum order check — $8.00
     const orderTotal = totalCents || items.reduce((sum, i) => sum + (i.offerCents || 0), 0);
     if (orderTotal < 800) {

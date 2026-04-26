@@ -66,13 +66,22 @@ export default function BarcodeScanner({ onScan, onClose }) {
     const isPenny = item.status === 'penny';
     const ok = item.status === 'accepted' || item.status === 'low' || isPenny;
     if (ok) {
-      addItem({
+      const addResultStatus = addItem({
         asin: item.asin, title: item.title, imageUrl: item.imageUrl,
         offerCents: item.offerCents, offerDisplay: item.offerDisplay,
         category: item.category, isDisc: item.isDisc, hasCase: item.hasCase,
         color: item.color, label: item.label,
         tier: isPenny ? 'penny' : 'standard',
       });
+
+      // Cart hit the per-ASIN cap (anti-fraud). Surface a soft warning;
+      // don't add. Server enforces the same limit at order time.
+      if (addResultStatus && addResultStatus.ok === false) {
+        showFlash('reject', addResultStatus.reason || 'Per-item max reached');
+        playTone(330, 0.12);
+        return;
+      }
+
       if (isPenny) {
         showFlash('penny', `${item.offerDisplay} bulk add — ${item.title || 'Added!'}`);
         playTone(550, 0.10);

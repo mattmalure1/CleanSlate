@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useMemo, useCallback, useEffect } from 'react';
 
 const STORAGE_KEY = 'cleanslate_cart';
+const MAX_COPIES_PER_ASIN = 5; // anti-fraud cap (also enforced server-side)
 
 const CartContext = createContext(null);
 
@@ -27,8 +28,24 @@ export function CartProvider({ children }) {
     }
   }, [items]);
 
+  // Returns { ok: boolean, reason?: string } so callers can show feedback
+  // when an item is blocked by the per-ASIN cap.
   const addItem = useCallback((item) => {
-    setItems((prev) => [...prev, { ...item, id: crypto.randomUUID() }]);
+    let result = { ok: true };
+    setItems((prev) => {
+      if (item.asin) {
+        const sameAsinCount = prev.filter((i) => i.asin === item.asin).length;
+        if (sameAsinCount >= MAX_COPIES_PER_ASIN) {
+          result = {
+            ok: false,
+            reason: `Already ${MAX_COPIES_PER_ASIN} copies in cart — that's our per-item max.`,
+          };
+          return prev; // don't add
+        }
+      }
+      return [...prev, { ...item, id: crypto.randomUUID() }];
+    });
+    return result;
   }, []);
 
   const removeItem = useCallback((id) => {

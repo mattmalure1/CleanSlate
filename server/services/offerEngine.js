@@ -312,6 +312,7 @@ function extractKeepaFields(product) {
 
     // Competition
     new_offer_count: nz(cur[11]) ?? 0,
+    used_offer_count: nz(cur[12]) ?? 0,
     fba_offer_count: product.newOffersFBA ?? 0,
     amazon_is_seller: (cur[0] != null && cur[0] !== -1),
 
@@ -737,6 +738,17 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
     competitionPenalty = 0.90;
   }
   trace.competition_penalty_applied = competitionPenalty;
+
+  // V3.2: Market-saturation gate (Eagle-Saver-style "no more LOTR paperback").
+  // If the Amazon listing is flooded with offers, used resale price will only
+  // go down and inventory will pile up. Reject before we end up with 50 copies
+  // of Twilight in the warehouse.
+  const totalOffers = (extractedFields.new_offer_count || 0) + (extractedFields.used_offer_count || 0);
+  trace.total_offer_count = totalOffers;
+  if (totalOffers > 50) {
+    return rejectWith(trace, 6, 'Market saturated — too many copies already for sale',
+      `total_offers=${totalOffers} (new=${extractedFields.new_offer_count} used=${extractedFields.used_offer_count})`);
+  }
 
   // ===== STEP 7: Fee calculation =====
   const referralRate     = tt.getConfig('referral_fee_rate');
