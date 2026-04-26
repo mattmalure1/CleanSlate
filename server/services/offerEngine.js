@@ -752,15 +752,16 @@ function runOfferEngine(rawProduct, extractedFields, opts = {}) {
   }
   trace.competition_penalty_applied = competitionPenalty;
 
-  // V3.2: Market-saturation gate (Eagle-Saver-style "no more LOTR paperback").
-  // If the Amazon listing is flooded with offers, used resale price will only
-  // go down and inventory will pile up. Reject before we end up with 50 copies
-  // of Twilight in the warehouse.
+  // V3.2: Market-saturation gate. Real saturation = LOTS of offers AND
+  // low velocity (LOTR paperback: 200 offers, 5 sales). A popular item
+  // with 50+ offers but 60+ sales/90 days isn't saturated — it's hot
+  // enough that there's a buyer for every seller. Use the offers/sales
+  // ratio as the actual signal.
   const totalOffers = (extractedFields.new_offer_count || 0) + (extractedFields.used_offer_count || 0);
   trace.total_offer_count = totalOffers;
-  if (totalOffers > 50) {
-    return rejectWith(trace, 6, 'Market saturated — too many copies already for sale',
-      `total_offers=${totalOffers} (new=${extractedFields.new_offer_count} used=${extractedFields.used_offer_count})`);
+  if (totalOffers > 50 && rankDrops90 < 10) {
+    return rejectWith(trace, 6, 'Market saturated — too many sellers, too few buyers',
+      `total_offers=${totalOffers} drops_90=${rankDrops90}`);
   }
 
   // ===== STEP 7: Fee calculation =====
